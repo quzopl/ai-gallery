@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf-8">
   <title>AI Gallery</title>
-  <link rel="stylesheet" href="/style.css">
+  <link rel="stylesheet" href="/style.css?v=7">
 </head>
 <body>
   <header class="topbar">
@@ -20,6 +20,13 @@
   <main class="layout">
     <aside id="sidebar" class="sidebar">
       <section>
+        <h3>Widok</h3>
+        <ul id="quick-filters">
+          <li id="qf-all" class="active">📚 Wszystkie</li>
+          <li id="qf-favorites">★ Ulubione</li>
+        </ul>
+      </section>
+      <section>
         <h3>Biblioteki</h3>
         <ul id="libraries"></ul>
       </section>
@@ -31,6 +38,10 @@
         <h3>LoRA</h3>
         <ul id="filter-loras" class="facets"></ul>
       </section>
+      <section>
+        <h3>Tagi</h3>
+        <ul id="filter-tags" class="facets"></ul>
+      </section>
     </aside>
 
     <section id="gallery" class="gallery"></section>
@@ -39,7 +50,14 @@
       <button id="detail-close" class="close-btn" title="Esc">✕</button>
       <img id="detail-img" alt="">
       <div id="detail-meta"></div>
+      <div class="detail-tags">
+        <div id="detail-tags-chips" class="tag-chips"></div>
+        <form id="detail-tag-form" class="tag-add">
+          <input id="detail-tag-input" type="text" placeholder="+ dodaj tag (Enter)" autocomplete="off">
+        </form>
+      </div>
       <div class="detail-actions">
+        <button id="btn-favorite">☆ Ulubione</button>
         <button id="btn-copy-prompt">📋 Kopiuj prompt</button>
         <button id="btn-delete" class="danger">🗑 Do kosza</button>
         <button id="btn-rename">✎ Zmień nazwę</button>
@@ -51,8 +69,28 @@
     <img id="lightbox-img" alt="">
   </div>
 
+  <div id="picker" class="picker hidden">
+    <div class="picker-box">
+      <header class="picker-head">
+        <button id="picker-up" title="Wyżej">↑</button>
+        <span id="picker-path"></span>
+        <button id="picker-close" title="Esc">✕</button>
+      </header>
+      <ul id="picker-list" class="picker-list"></ul>
+      <footer class="picker-foot">
+        <label>Nazwa biblioteki:
+          <input id="picker-name" type="text" placeholder="(nazwa folderu)">
+        </label>
+        <div class="picker-actions">
+          <button id="picker-cancel">Anuluj</button>
+          <button id="picker-add" class="primary">+ Dodaj ten folder</button>
+        </div>
+      </footer>
+    </div>
+  </div>
+
   <div id="toast"></div>
 
-  <script type="module" src="/app.js"></script>
+  <script type="module" src="/app.js?v=7"></script>
 </body>
 </html>

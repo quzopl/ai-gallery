@@ -8,7 +8,7 @@ import threading
 from pathlib import Path
 from typing import Literal
 
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI, HTTPException, Query
 from fastapi.responses import JSONResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
@@ -170,6 +170,8 @@ def list_images(
     model: str | None = None,
     lora: str | None = None,
     q: str | None = None,
+    favorite: bool = False,
+    tag: list[str] = Query(default=[]),  # type: ignore[assignment]
     sort: Literal["mtime_desc", "mtime_asc"] = "mtime_desc",
     cursor: str | None = None,
     limit: int = 200,
@@ -188,6 +190,22 @@ def list_images(
     if q:
         join += " JOIN images_fts fts ON fts.rowid = i.id"
         where.append("images_fts MATCH ?"); params.append(q)
+    if favorite:
+        where.append("i.is_favorite = 1")
+
+    # Tag filter: obraz musi mieć WSZYSTKIE wybrane tagi (AND).
+    # Robimy to przez podzapytanie z GROUP BY HAVING COUNT(DISTINCT).
+    tag_names = [t for t in (tag or []) if t]
+    if tag_names:
+        placeholders = ",".join("?" * len(tag_names))
+        where.append(
+            f"i.id IN (SELECT it.image_id FROM image_tags it "
+            f"JOIN tags t ON t.id = it.tag_id "
+            f"WHERE t.name IN ({placeholders}) "
+            f"GROUP BY it.image_id HAVING COUNT(DISTINCT t.id) = ?)"
+        )
+        params.extend(tag_names)
+        params.append(len(tag_names))
 
     direction = "DESC" if sort == "mtime_desc" else "ASC"
     op = "<" if direction == "DESC" else ">"
@@ -198,7 +216,7 @@ def list_images(
 
     sql = (
         "SELECT DISTINCT i.id, i.library_id, i.rel_path, i.sha1, i.mtime, "
-        "i.width, i.height, i.source_kind, i.model_name "
+        "i.width, i.height, i.source_kind, i.model_name, i.is_favorite "
         f"FROM images i{join}"
     )
     if where:
@@ -229,9 +247,15 @@ def get_image(image_id: int) -> dict:
         "JOIN loras lo ON lo.id = il.lora_id WHERE il.image_id=?",
         (image_id,),
     ).fetchall()]
+    tags = [r[0] for r in con.execute(
+        "SELECT t.name FROM image_tags it JOIN tags t ON t.id = it.tag_id "
+        "WHERE it.image_id=? ORDER BY t.name",
+        (image_id,),
+    ).fetchall()]
     con.close()
     out = dict(row)
     out["loras"] = loras
+    out["tags"] = tags
     return out
 
 
@@ -348,6 +372,63 @@ class RenameRequest(BaseModel):
 class MoveRequest(BaseModel):
     to_library_id: int
     to_rel_path: str
+
+
+class FavoriteRequest(BaseModel):
+    value: bool
+
+
+class TagsRequest(BaseModel):
+    tags: list[str]
+
+
+@app.get("/api/tags")
+def list_tags() -> list[dict]:
+    """Wszystkie tagi z licznością obrazów."""
+    con = db.readonly(DB_PATH)
+    rows = con.execute(
+        "SELECT t.id, t.name, COUNT(it.image_id) AS count "
+        "FROM tags t LEFT JOIN image_tags it ON it.tag_id = t.id "
+        "GROUP BY t.id ORDER BY count DESC, t.name"
+    ).fetchall()
+    con.close()
+    return [dict(r) for r in rows]
+
+
+@app.delete("/api/tags/{tag_id}")
+def delete_tag(tag_id: int) -> dict:
+    con = db.readonly(DB_PATH)
+    exists = con.execute("SELECT 1 FROM tags WHERE id=?", (tag_id,)).fetchone()
+    con.close()
+    if not exists:
+        raise HTTPException(404)
+    db.delete_tag(state.writer, tag_id=tag_id)
+    return {"status": "deleted"}
+
+
+@app.post("/api/images/{image_id}/tags")
+def set_image_tags(image_id: int, req: TagsRequest) -> dict:
+    """Zastąp WSZYSTKIE tagi obrazu listą `tags`."""
+    con = db.readonly(DB_PATH)
+    row = con.execute("SELECT 1 FROM images WHERE id=?", (image_id,)).fetchone()
+    con.close()
+    if not row:
+        raise HTTPException(404)
+    db.set_image_tags(state.writer, image_id=image_id, tag_names=req.tags)
+    _broadcast({"type": "image_changed", "image_id": image_id})
+    return {"status": "ok", "tags": [t.strip() for t in req.tags if t.strip()]}
+
+
+@app.post("/api/images/{image_id}/favorite")
+def set_favorite(image_id: int, req: FavoriteRequest) -> dict:
+    con = db.readonly(DB_PATH)
+    row = con.execute("SELECT 1 FROM images WHERE id=?", (image_id,)).fetchone()
+    con.close()
+    if not row:
+        raise HTTPException(404)
+    db.set_favorite(state.writer, image_id=image_id, value=req.value)
+    _broadcast({"type": "image_changed", "image_id": image_id})
+    return {"status": "ok", "is_favorite": req.value}
 
 
 def _image_source_path(image_id: int) -> tuple[Path, int, str]:
@@ -467,6 +548,30 @@ async def ws_endpoint(ws: WebSocket) -> None:
         pass
     finally:
         state.ws_clients.discard(ws)
+
+
+@app.get("/api/browse")
+def browse(path: str | None = None) -> dict:
+    """Lista podkatalogów dla wybranej ścieżki. Domyślnie HOME."""
+    p = Path(path).expanduser().resolve() if path else Path.home()
+    if not p.exists() or not p.is_dir():
+        raise HTTPException(400, f"Nie istnieje lub nie jest katalogiem: {p}")
+    if not os.access(p, os.R_OK):
+        raise HTTPException(403, f"Brak prawa odczytu: {p}")
+    dirs = []
+    try:
+        for entry in sorted(p.iterdir(), key=lambda e: e.name.lower()):
+            if not entry.is_dir() or entry.name.startswith("."):
+                continue
+            try:
+                readable = os.access(entry, os.R_OK)
+            except OSError:
+                readable = False
+            dirs.append({"name": entry.name, "readable": readable})
+    except PermissionError:
+        pass
+    parent = str(p.parent) if p != p.parent else None
+    return {"path": str(p), "parent": parent, "dirs": dirs}
 
 
 app.mount("/", StaticFiles(directory=FRONTEND, html=True), name="frontend")
