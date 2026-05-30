@@ -58,3 +58,38 @@ def test_add_library_rejects_duplicate(app_with_tmpdb) -> None:
     client.post("/api/libraries", json={"path": str(lib_path)})
     r = client.post("/api/libraries", json={"path": str(lib_path)})
     assert r.status_code == 409
+
+
+def test_list_images_by_library(app_with_tmpdb) -> None:
+    client, tmp_path = app_with_tmpdb
+    lib_path = tmp_path / "photos"; lib_path.mkdir()
+    _make_comfy_png(lib_path / "a.png")
+    _make_comfy_png(lib_path / "b.png")
+    r = client.post("/api/libraries", json={"path": str(lib_path)})
+    lib_id = r.json()["id"]
+    import time
+    deadline = time.time() + 5
+    while time.time() < deadline:
+        imgs = client.get(f"/api/images?library_id={lib_id}").json()
+        if len(imgs["items"]) == 2:
+            break
+        time.sleep(0.2)
+    assert len(imgs["items"]) == 2
+
+
+def test_list_images_with_fts(app_with_tmpdb) -> None:
+    client, tmp_path = app_with_tmpdb
+    lib_path = tmp_path / "photos"; lib_path.mkdir()
+    _make_comfy_png(lib_path / "a.png")  # prompt: "hello cat"
+    client.post("/api/libraries", json={"path": str(lib_path)})
+    import time
+    deadline = time.time() + 5
+    r = None
+    while time.time() < deadline:
+        r = client.get("/api/images?q=cat").json()
+        if r["items"]:
+            break
+        time.sleep(0.2)
+    assert r and r["items"], "FTS nie znalazł 'cat'"
+    r2 = client.get("/api/images?q=xyzunknown").json()
+    assert r2["items"] == []
