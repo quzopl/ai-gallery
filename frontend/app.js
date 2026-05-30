@@ -246,10 +246,48 @@ document.getElementById("btn-copy-prompt").onclick = async () => {
   toast("Prompt skopiowany");
 };
 
+// ---------- facets + search ----------
+async function refreshFacets() {
+  const f = await api("/api/facets");
+  renderFacets("filter-models", f.models, "model");
+  renderFacets("filter-loras", f.loras, "lora");
+}
+
+function renderFacets(elementId, items, filterKey) {
+  const ul = document.getElementById(elementId);
+  ul.innerHTML = "";
+  const allLi = document.createElement("li");
+  allLi.textContent = "— wszystkie —";
+  allLi.classList.toggle("active", state.filters[filterKey] == null);
+  allLi.onclick = () => { state.filters[filterKey] = null; refreshFacets(); loadImages(); };
+  ul.appendChild(allLi);
+  for (const it of items) {
+    const li = document.createElement("li");
+    li.classList.toggle("active", state.filters[filterKey] === it.name);
+    const n = document.createElement("span");
+    n.textContent = it.name; n.title = it.name;
+    const c = document.createElement("span"); c.className = "count"; c.textContent = it.count;
+    li.append(n, c);
+    li.onclick = () => {
+      state.filters[filterKey] = state.filters[filterKey] === it.name ? null : it.name;
+      refreshFacets(); loadImages();
+    };
+    ul.appendChild(li);
+  }
+}
+
+const searchEl = document.getElementById("search");
+searchEl.addEventListener("keydown", (e) => {
+  if (e.key !== "Enter") return;
+  state.filters.q = searchEl.value.trim();
+  loadImages();
+});
+
 // ---------- init ----------
 (async function init() {
   const saved = localStorage.getItem("activeLibraryId");
   state.activeLibraryId = saved ? Number(saved) || null : null;
   await refreshLibraries();
+  await refreshFacets();
   await loadImages();
 })();
