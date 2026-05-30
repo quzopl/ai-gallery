@@ -45,7 +45,7 @@ def test_rename_in_place(tmp_path: Path) -> None:
 def test_rename_rejects_path_separator(tmp_path: Path) -> None:
     src = tmp_path / "a.png"
     src.write_bytes(b"x")
-    with pytest.raises(ValueError, match="nazwa"):
+    with pytest.raises(ValueError, match="name"):
         fileops.rename(src, new_name="../evil.png")
     with pytest.raises(ValueError):
         fileops.rename(src, new_name="sub/b.png")
@@ -74,5 +74,5 @@ def test_move_rejects_outside_target_library(tmp_path: Path) -> None:
     dst_lib = tmp_path / "dst_lib"
     src_lib.mkdir(); dst_lib.mkdir()
     src = src_lib / "a.png"; src.write_bytes(b"x")
-    with pytest.raises(ValueError, match="poza"):
+    with pytest.raises(ValueError, match="outside"):
         fileops.move(src, dst_library_root=dst_lib, dst_rel_path="../outside.png")
