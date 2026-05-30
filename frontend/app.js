@@ -184,7 +184,67 @@ function selectImage(id) {
   openDetail(id);
 }
 
-function openDetail(_id) { /* Task 16 */ }
+// ---------- detail panel + lightbox ----------
+const detailEl = document.getElementById("detail");
+const detailImg = document.getElementById("detail-img");
+const detailMeta = document.getElementById("detail-meta");
+const lightboxEl = document.getElementById("lightbox");
+const lightboxImg = document.getElementById("lightbox-img");
+
+async function openDetail(id) {
+  const d = await api(`/api/images/${id}`);
+  detailImg.src = `/api/images/${id}/file`;
+  detailMeta.innerHTML = "";
+  const dl = document.createElement("dl");
+  function add(k, v) {
+    if (v == null || v === "") return;
+    const dt = document.createElement("dt"); dt.textContent = k;
+    const dd = document.createElement("dd"); dd.textContent = String(v);
+    dl.append(dt, dd);
+  }
+  add("Plik", d.rel_path);
+  add("Wymiary", `${d.width}×${d.height}`);
+  add("Źródło", d.source_kind);
+  add("Model", d.model_name);
+  add("Sampler", d.sampler);
+  add("Steps", d.steps);
+  add("CFG", d.cfg);
+  add("Seed", d.seed);
+  if (d.loras && d.loras.length) {
+    const dt = document.createElement("dt"); dt.textContent = "LoRA";
+    const dd = document.createElement("dd");
+    dd.innerHTML = d.loras.map(L => `· ${L.name}${L.strength != null ? ` (${L.strength})` : ""}`).join("<br>");
+    dl.append(dt, dd);
+  }
+  add("Prompt", d.prompt);
+  add("Negative", d.negative);
+  detailMeta.appendChild(dl);
+  detailEl.dataset.imageId = id;
+  detailEl.classList.remove("hidden");
+}
+
+function closeDetail() {
+  detailEl.classList.add("hidden");
+  state.selectedId = null;
+  for (const t of galleryEl.querySelectorAll(".tile.selected")) {
+    t.classList.remove("selected");
+  }
+}
+
+document.getElementById("detail-close").onclick = closeDetail;
+
+detailImg.onclick = () => {
+  lightboxImg.src = detailImg.src;
+  lightboxEl.classList.remove("hidden");
+};
+lightboxEl.onclick = () => lightboxEl.classList.add("hidden");
+
+document.getElementById("btn-copy-prompt").onclick = async () => {
+  const id = Number(detailEl.dataset.imageId);
+  const d = await api(`/api/images/${id}`);
+  await navigator.clipboard.writeText(d.prompt || "");
+  toast("Prompt skopiowany");
+};
 
 // ---------- init ----------
 (async function init() {
