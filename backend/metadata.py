@@ -13,6 +13,11 @@ from typing import Any
 
 from PIL import Image
 
+# Linia parametrów A1111: "Key: value, Key: value, ..."
+# Wartość może być w cudzysłowach z przecinkami w środku.
+_KV_RE = re.compile(r'([A-Za-z][A-Za-z0-9 ]*?):\s*("(?:[^"]|\\")*"|[^,]+?)(?=,\s*[A-Za-z][A-Za-z0-9 ]*?:\s*|$)')
+_LORA_RE = re.compile(r'<lora:([^:>]+):([\d.]+)>', re.IGNORECASE)
+
 # Wynikowy słownik. Wszystkie pola opcjonalne.
 EMPTY: dict[str, Any] = {
     "source_kind": None,
@@ -41,11 +46,36 @@ def extract(path: Path) -> dict[str, Any]:
                 _parse_comfyui(text, out)
             elif "parameters" in text:
                 _parse_a1111(text["parameters"], out)
-            # EXIF UserComment fallback robimy w Task 4
+            else:
+                params = _read_exif_user_comment(img)
+                if params:
+                    _parse_a1111(params, out)
     except Exception:  # noqa: BLE001
         # corrupt/unreadable — zwracamy co mamy (puste pola)
         pass
     return out
+
+
+def _read_exif_user_comment(img: Image.Image) -> str | None:
+    try:
+        exif = img.getexif()
+    except Exception:  # noqa: BLE001
+        return None
+    raw = exif.get(0x9286)
+    if not raw:
+        return None
+    if isinstance(raw, str):
+        return raw
+    if isinstance(raw, (bytes, bytearray)):
+        if raw.startswith(b"UNICODE\x00"):
+            try:
+                return raw[8:].decode("utf-16-be")
+            except UnicodeDecodeError:
+                return None
+        if raw.startswith(b"ASCII\x00\x00\x00"):
+            return raw[8:].decode("ascii", errors="replace")
+        return raw.decode("utf-8", errors="replace")
+    return None
 
 
 def _parse_comfyui(text: dict[str, str], out: dict[str, Any]) -> None:
@@ -148,9 +178,43 @@ def _comfy_loras(graph: dict[str, Any]) -> list[tuple[str, float | None]]:
     return out
 
 
-def _parse_a1111(_params: str, _out: dict[str, Any]) -> None:
-    """A1111 'parameters' string — implementacja w Task 4."""
-    pass
+def _parse_a1111(params: str, out: dict[str, Any]) -> None:
+    out["source_kind"] = "a1111"
+    out["raw_metadata"] = params
+    lines = params.splitlines()
+    neg_idx = next((i for i, ln in enumerate(lines) if ln.startswith("Negative prompt:")), None)
+    param_idx = next((i for i, ln in enumerate(lines) if ln.startswith("Steps:")), None)
+
+    if neg_idx is not None:
+        pos = "\n".join(lines[:neg_idx]).strip()
+        if param_idx is not None:
+            neg = " ".join(lines[neg_idx:param_idx]).removeprefix("Negative prompt:").strip()
+        else:
+            neg = " ".join(lines[neg_idx:]).removeprefix("Negative prompt:").strip()
+    else:
+        pos = "\n".join(lines[:param_idx] if param_idx is not None else lines).strip()
+        neg = None
+
+    out["prompt"] = pos or None
+    out["negative"] = neg or None
+
+    if param_idx is not None:
+        kv_line = ", ".join(lines[param_idx:])
+        for m in _KV_RE.finditer(kv_line):
+            k, v = m.group(1).strip(), m.group(2).strip().strip('"')
+            if k == "Steps":
+                out["steps"] = _int_or_none(v)
+            elif k == "Sampler":
+                out["sampler"] = v
+            elif k == "CFG scale":
+                out["cfg"] = _float_or_none(v)
+            elif k == "Seed":
+                out["seed"] = _int_or_none(v)
+            elif k == "Model":
+                out["model_name"] = v
+
+    if pos:
+        out["loras"] = [(name, float(strength)) for name, strength in _LORA_RE.findall(pos)]
 
 
 # ---------- helpery typów ----------
