@@ -8,7 +8,6 @@ różnych połączeń).
 """
 from __future__ import annotations
 
-import json
 import queue
 import sqlite3
 import threading
@@ -104,7 +103,6 @@ def init_schema(db_path: Path) -> None:
     con = sqlite3.connect(db_path)
     con.executescript("PRAGMA journal_mode=WAL;")
     con.executescript(SCHEMA)
-    con.commit()
     con.close()
 
 
@@ -156,7 +154,10 @@ def _submit(w: Writer, fn: Callable[..., Any], *args: Any, **kwargs: Any) -> Any
     """Wyślij operację do writer threada i poczekaj na wynik."""
     result_q: queue.Queue = queue.Queue(maxsize=1)
     w.queue.put((fn, args, kwargs, result_q))
-    status, value = result_q.get()
+    try:
+        status, value = result_q.get(timeout=30)
+    except queue.Empty:
+        raise RuntimeError("db writer thread unresponsive")
     if status == "err":
         raise value
     return value
