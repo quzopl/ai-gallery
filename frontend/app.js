@@ -283,6 +283,71 @@ searchEl.addEventListener("keydown", (e) => {
   loadImages();
 });
 
+// ---------- WebSocket ----------
+let ws = null;
+let wsReconnectTimer = null;
+
+function connectWS() {
+  const proto = location.protocol === "https:" ? "wss:" : "ws:";
+  ws = new WebSocket(`${proto}//${location.host}/ws`);
+  ws.onopen = () => {
+    clearTimeout(wsReconnectTimer);
+    setInterval(() => { if (ws.readyState === WebSocket.OPEN) ws.send("ping"); }, 30000);
+  };
+  ws.onmessage = (ev) => {
+    let msg; try { msg = JSON.parse(ev.data); } catch { return; }
+    handleWSMessage(msg);
+  };
+  ws.onclose = () => {
+    wsReconnectTimer = setTimeout(connectWS, 2000);
+  };
+  ws.onerror = () => ws.close();
+}
+
+let pendingNewImages = 0;
+const liveBadge = document.createElement("div");
+liveBadge.style.cssText = "position:absolute;top:8px;left:50%;transform:translateX(-50%);" +
+  "background:var(--accent);color:white;padding:6px 12px;border-radius:4px;cursor:pointer;display:none;z-index:50;";
+liveBadge.onclick = () => {
+  pendingNewImages = 0;
+  liveBadge.style.display = "none";
+  galleryEl.scrollTo({ top: 0, behavior: "smooth" });
+  loadImages();
+};
+galleryEl.parentElement.style.position = "relative";
+galleryEl.parentElement.appendChild(liveBadge);
+
+function handleWSMessage(msg) {
+  switch (msg.type) {
+    case "scan_progress":
+      toast(`Skanuję: ${msg.scanned}/${msg.total}`);
+      break;
+    case "scan_done":
+      toast(`Skan ukończony: +${msg.added} ~${msg.updated} -${msg.removed}`);
+      refreshLibraries();
+      refreshFacets();
+      break;
+    case "image_added":
+      if (galleryEl.scrollTop < 50) {
+        loadImages();
+      } else {
+        pendingNewImages++;
+        liveBadge.textContent = `${pendingNewImages} nowych — kliknij aby pokazać`;
+        liveBadge.style.display = "block";
+      }
+      break;
+    case "image_removed": {
+      const tile = galleryEl.querySelector(`.tile[data-id="${msg.image_id}"]`);
+      if (tile) tile.remove();
+      if (state.selectedId === msg.image_id) closeDetail();
+      break;
+    }
+    case "image_changed":
+      if (state.selectedId === msg.image_id) openDetail(msg.image_id);
+      break;
+  }
+}
+
 // ---------- init ----------
 (async function init() {
   const saved = localStorage.getItem("activeLibraryId");
@@ -290,4 +355,5 @@ searchEl.addEventListener("keydown", (e) => {
   await refreshLibraries();
   await refreshFacets();
   await loadImages();
+  connectWS();
 })();
