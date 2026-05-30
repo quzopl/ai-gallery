@@ -42,7 +42,7 @@ function renderLibraries() {
   const ul = document.getElementById("libraries");
   ul.innerHTML = "";
   const allLi = document.createElement("li");
-  allLi.textContent = "Wszystkie";
+  allLi.textContent = "All";
   allLi.classList.toggle("active", state.activeLibraryId === null);
   allLi.onclick = () => selectLibrary(null);
   ul.appendChild(allLi);
@@ -100,7 +100,7 @@ async function loadPickerPath(path) {
       li.textContent = d.name;
       if (!d.readable) {
         li.classList.add("unreadable");
-        li.title = "brak prawa odczytu";
+        li.title = "no read permission";
       } else {
         li.onclick = () => loadPickerPath(`${r.path}/${d.name}`.replace(/\/+/g, "/"));
       }
@@ -110,12 +110,12 @@ async function loadPickerPath(path) {
       const li = document.createElement("li");
       li.style.color = "var(--fg-dim)";
       li.style.cursor = "default";
-      li.textContent = "(brak podkatalogów)";
+      li.textContent = "(no subdirectories)";
       li.style.pointerEvents = "none";
       pickerListEl.appendChild(li);
     }
   } catch (err) {
-    toast("Błąd: " + err.message);
+    toast("Error: " + err.message);
   }
 }
 
@@ -133,11 +133,11 @@ document.getElementById("picker-add").onclick = async () => {
       method: "POST",
       body: JSON.stringify({ path: pickerCurrentPath, name }),
     });
-    toast("Biblioteka dodana — skanowanie w toku…");
+    toast("Library added — scanning…");
     closePicker();
     await refreshLibraries();
   } catch (err) {
-    toast("Błąd: " + err.message);
+    toast("Error: " + err.message);
   }
 };
 
@@ -145,11 +145,11 @@ document.getElementById("btn-add-library").onclick = () => openPicker();
 
 document.getElementById("btn-rescan").onclick = async () => {
   if (state.activeLibraryId == null) {
-    toast("Wybierz bibliotekę");
+    toast("Select a library");
     return;
   }
   await api(`/api/libraries/${state.activeLibraryId}/rescan`, { method: "POST" });
-  toast("Rescan rozpoczęty");
+  toast("Rescan started");
 };
 
 // ---------- gallery ----------
@@ -268,9 +268,9 @@ async function openDetail(id) {
     const dd = document.createElement("dd"); dd.textContent = String(v);
     dl.append(dt, dd);
   }
-  add("Plik", d.rel_path);
-  add("Wymiary", `${d.width}×${d.height}`);
-  add("Źródło", d.source_kind);
+  add("File", d.rel_path);
+  add("Dimensions", `${d.width}×${d.height}`);
+  add("Source", d.source_kind);
   add("Model", d.model_name);
   add("Sampler", d.sampler);
   add("Steps", d.steps);
@@ -300,7 +300,7 @@ function renderDetailTags(tags) {
     chip.className = "tag-chip";
     chip.textContent = "#" + t;
     const x = document.createElement("span");
-    x.className = "x"; x.textContent = "×"; x.title = "Usuń tag";
+    x.className = "x"; x.textContent = "×"; x.title = "Remove tag";
     x.onclick = (e) => { e.stopPropagation(); removeDetailTag(t); };
     chip.appendChild(x);
     chipsEl.appendChild(chip);
@@ -319,7 +319,7 @@ async function commitDetailTags(tags) {
     renderDetailTags(tags);
     await refreshTagFacets();
   } catch (err) {
-    toast("Błąd: " + err.message);
+    toast("Error: " + err.message);
   }
 }
 
@@ -335,7 +335,7 @@ document.getElementById("detail-tag-form").onsubmit = async (e) => {
   if (!name) return;
   const tags = JSON.parse(detailEl.dataset.tags || "[]");
   if (tags.includes(name)) {
-    toast("Już ma ten tag");
+    toast("Already has this tag");
     return;
   }
   tags.push(name);
@@ -381,9 +381,9 @@ document.getElementById("btn-favorite").onclick = async () => {
     if (img) img.is_favorite = newVal ? 1 : 0;
     const tile = galleryEl.querySelector(`.tile[data-id="${id}"]`);
     if (tile) tile.classList.toggle("fav", newVal);
-    toast(newVal ? "Dodano do ulubionych" : "Usunięto z ulubionych");
+    toast(newVal ? "Added to favorites" : "Removed from favorites");
   } catch (err) {
-    toast("Błąd: " + err.message);
+    toast("Error: " + err.message);
   }
 };
 
@@ -391,7 +391,7 @@ document.getElementById("btn-copy-prompt").onclick = async () => {
   const id = Number(detailEl.dataset.imageId);
   const d = await api(`/api/images/${id}`);
   await navigator.clipboard.writeText(d.prompt || "");
-  toast("Prompt skopiowany");
+  toast("Prompt copied");
 };
 
 // ---------- facets + search ----------
@@ -422,7 +422,7 @@ function renderFacetCloud(elementId, items, filterKey) {
 
   const allLi = document.createElement("li");
   allLi.className = "reset";
-  allLi.textContent = "wszystkie";
+  allLi.textContent = "all";
   allLi.classList.toggle("active", state.filters[filterKey] == null);
   allLi.onclick = () => { state.filters[filterKey] = null; refreshFacets(); loadImages(); };
   ul.appendChild(allLi);
@@ -458,7 +458,7 @@ async function refreshTagFacets() {
     li.style.color = "var(--fg-dim)";
     li.style.cursor = "default";
     li.style.fontStyle = "italic";
-    li.textContent = "(brak — dodaj tag w panelu detali)";
+    li.textContent = "(none — add tags in detail panel)";
     ul.appendChild(li);
     return;
   }
@@ -528,10 +528,10 @@ galleryEl.parentElement.appendChild(liveBadge);
 function handleWSMessage(msg) {
   switch (msg.type) {
     case "scan_progress":
-      toast(`Skanuję: ${msg.scanned}/${msg.total}`);
+      toast(`Scanning: ${msg.scanned}/${msg.total}`);
       break;
     case "scan_done":
-      toast(`Skan ukończony: +${msg.added} ~${msg.updated} -${msg.removed}`);
+      toast(`Scan complete: +${msg.added} ~${msg.updated} -${msg.removed}`);
       refreshLibraries();
       refreshFacets();
       break;
@@ -540,7 +540,7 @@ function handleWSMessage(msg) {
         loadImages();
       } else {
         pendingNewImages++;
-        liveBadge.textContent = `${pendingNewImages} nowych — kliknij aby pokazać`;
+        liveBadge.textContent = `${pendingNewImages} new — click to show`;
         liveBadge.style.display = "block";
       }
       break;
@@ -561,13 +561,13 @@ document.getElementById("btn-delete").onclick = async () => {
   const id = Number(detailEl.dataset.imageId);
   if (!id) return;
   const d = state.images.find(x => x.id === id);
-  if (!confirm(`Przenieść do kosza?\n${d?.rel_path || id}`)) return;
+  if (!confirm(`Move to trash?\n${d?.rel_path || id}`)) return;
   try {
     await api(`/api/images/${id}`, { method: "DELETE" });
-    toast("Przeniesione do kosza");
+    toast("Moved to trash");
     closeDetail();
   } catch (err) {
-    toast("Błąd: " + err.message);
+    toast("Error: " + err.message);
   }
 };
 
@@ -576,18 +576,18 @@ document.getElementById("btn-rename").onclick = async () => {
   if (!id) return;
   const d = state.images.find(x => x.id === id);
   const currentName = (d?.rel_path || "").split("/").pop();
-  const newName = prompt("Nowa nazwa pliku:", currentName);
+  const newName = prompt("New filename:", currentName);
   if (!newName || newName === currentName) return;
   try {
     await api(`/api/images/${id}/rename`, {
       method: "POST",
       body: JSON.stringify({ new_name: newName }),
     });
-    toast("Zmieniono nazwę");
+    toast("Renamed");
     await loadImages();
     openDetail(id);
   } catch (err) {
-    toast("Błąd: " + err.message);
+    toast("Error: " + err.message);
   }
 };
 

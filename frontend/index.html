@@ -1,33 +1,33 @@
 <!DOCTYPE html>
-<html lang="pl">
+<html lang="en">
 <head>
   <meta charset="utf-8">
   <title>AI Gallery</title>
-  <link rel="stylesheet" href="/style.css?v=7">
+  <link rel="stylesheet" href="/style.css?v=8">
 </head>
 <body>
   <header class="topbar">
     <div class="brand">🖼️ AI Gallery</div>
     <div class="topbar-actions">
-      <button id="btn-add-library">+ Dodaj folder</button>
-      <button id="btn-rescan" title="Skanuj ponownie aktywną bibliotekę">⟳</button>
-      <button id="btn-tile-smaller" title="Mniejsze kafelki (Ctrl+-)">−</button>
-      <button id="btn-tile-bigger" title="Większe kafelki (Ctrl+=)">+</button>
+      <button id="btn-add-library">+ Add folder</button>
+      <button id="btn-rescan" title="Rescan active library">⟳</button>
+      <button id="btn-tile-smaller" title="Smaller tiles (Ctrl+-)">−</button>
+      <button id="btn-tile-bigger" title="Larger tiles (Ctrl+=)">+</button>
     </div>
-    <input id="search" type="search" placeholder="🔍 szukaj w promptach (Enter)..." />
+    <input id="search" type="search" placeholder="🔍 search prompts (Enter)..." />
   </header>
 
   <main class="layout">
     <aside id="sidebar" class="sidebar">
       <section>
-        <h3>Widok</h3>
+        <h3>View</h3>
         <ul id="quick-filters">
-          <li id="qf-all" class="active">📚 Wszystkie</li>
-          <li id="qf-favorites">★ Ulubione</li>
+          <li id="qf-all" class="active">📚 All</li>
+          <li id="qf-favorites">★ Favorites</li>
         </ul>
       </section>
       <section>
-        <h3>Biblioteki</h3>
+        <h3>Libraries</h3>
         <ul id="libraries"></ul>
       </section>
       <section>
@@ -39,7 +39,7 @@
         <ul id="filter-loras" class="facets"></ul>
       </section>
       <section>
-        <h3>Tagi</h3>
+        <h3>Tags</h3>
         <ul id="filter-tags" class="facets"></ul>
       </section>
     </aside>
@@ -53,14 +53,14 @@
       <div class="detail-tags">
         <div id="detail-tags-chips" class="tag-chips"></div>
         <form id="detail-tag-form" class="tag-add">
-          <input id="detail-tag-input" type="text" placeholder="+ dodaj tag (Enter)" autocomplete="off">
+          <input id="detail-tag-input" type="text" placeholder="+ add tag (Enter)" autocomplete="off">
         </form>
       </div>
       <div class="detail-actions">
-        <button id="btn-favorite">☆ Ulubione</button>
-        <button id="btn-copy-prompt">📋 Kopiuj prompt</button>
-        <button id="btn-delete" class="danger">🗑 Do kosza</button>
-        <button id="btn-rename">✎ Zmień nazwę</button>
+        <button id="btn-favorite">☆ Favorite</button>
+        <button id="btn-copy-prompt">📋 Copy prompt</button>
+        <button id="btn-delete" class="danger">🗑 Move to trash</button>
+        <button id="btn-rename">✎ Rename</button>
       </div>
     </aside>
   </main>
@@ -72,18 +72,18 @@
   <div id="picker" class="picker hidden">
     <div class="picker-box">
       <header class="picker-head">
-        <button id="picker-up" title="Wyżej">↑</button>
+        <button id="picker-up" title="Up">↑</button>
         <span id="picker-path"></span>
         <button id="picker-close" title="Esc">✕</button>
       </header>
       <ul id="picker-list" class="picker-list"></ul>
       <footer class="picker-foot">
-        <label>Nazwa biblioteki:
-          <input id="picker-name" type="text" placeholder="(nazwa folderu)">
+        <label>Library name:
+          <input id="picker-name" type="text" placeholder="(folder name)">
         </label>
         <div class="picker-actions">
-          <button id="picker-cancel">Anuluj</button>
-          <button id="picker-add" class="primary">+ Dodaj ten folder</button>
+          <button id="picker-cancel">Cancel</button>
+          <button id="picker-add" class="primary">+ Add this folder</button>
         </div>
       </footer>
     </div>
@@ -91,6 +91,6 @@
 
   <div id="toast"></div>
 
-  <script type="module" src="/app.js?v=7"></script>
+  <script type="module" src="/app.js?v=8"></script>
 </body>
 </html>

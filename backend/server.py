@@ -95,14 +95,14 @@ def list_libraries() -> list[dict]:
 def add_library(req: AddLibraryRequest) -> dict:
     p = Path(req.path).expanduser().resolve()
     if not p.exists() or not p.is_dir():
-        raise HTTPException(400, f"Ścieżka nie istnieje lub nie jest katalogiem: {p}")
+        raise HTTPException(400, f"Path does not exist or is not a directory: {p}")
     if not os.access(p, os.R_OK):
-        raise HTTPException(400, f"Brak prawa odczytu: {p}")
+        raise HTTPException(400, f"No read permission: {p}")
     con = db.readonly(DB_PATH)
     existing = con.execute("SELECT id FROM libraries WHERE path=?", (str(p),)).fetchone()
     con.close()
     if existing:
-        raise HTTPException(409, f"Biblioteka już dodana: {p}")
+        raise HTTPException(409, f"Library already added: {p}")
     name = req.name or p.name
     lib_id = db.add_library(state.writer, path=str(p), name=name)
     _start_initial_scan(lib_id, p)
@@ -275,7 +275,7 @@ def get_thumb(image_id: int) -> Response:
         raise HTTPException(404)
     src = Path(row["lib_path"]) / row["rel_path"]
     if not src.exists():
-        raise HTTPException(404, "źródło nie istnieje")
+        raise HTTPException(404, "source file does not exist")
     out = thumbs.get_or_generate(src, sha1=row["sha1"], cache_dir=THUMBS_DIR)
     return FileResponse(out, media_type="image/webp",
                         headers={"Cache-Control": "public, max-age=31536000, immutable"})
@@ -501,7 +501,7 @@ def move_image(image_id: int, req: MoveRequest) -> dict:
     dst_lib = con.execute("SELECT path FROM libraries WHERE id=?", (req.to_library_id,)).fetchone()
     con.close()
     if not dst_lib:
-        raise HTTPException(404, "docelowa biblioteka nie istnieje")
+        raise HTTPException(404, "destination library does not exist")
     error: str | None = None; success = False; dst: Path | None = None
     try:
         dst = fileops.move(src, dst_library_root=Path(dst_lib["path"]),
@@ -555,9 +555,9 @@ def browse(path: str | None = None) -> dict:
     """Lista podkatalogów dla wybranej ścieżki. Domyślnie HOME."""
     p = Path(path).expanduser().resolve() if path else Path.home()
     if not p.exists() or not p.is_dir():
-        raise HTTPException(400, f"Nie istnieje lub nie jest katalogiem: {p}")
+        raise HTTPException(400, f"Does not exist or is not a directory: {p}")
     if not os.access(p, os.R_OK):
-        raise HTTPException(403, f"Brak prawa odczytu: {p}")
+        raise HTTPException(403, f"No read permission: {p}")
     dirs = []
     try:
         for entry in sorted(p.iterdir(), key=lambda e: e.name.lower()):

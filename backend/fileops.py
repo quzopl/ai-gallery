@@ -66,9 +66,9 @@ def move_to_trash(path: Path) -> Path:
 def rename(path: Path, *, new_name: str) -> Path:
     """Rename w obrębie tego samego folderu. Walidacja nazwy."""
     if "/" in new_name or "\\" in new_name or ".." in new_name.split("/"):
-        raise ValueError("nazwa: niedozwolone znaki")
+        raise ValueError("name: invalid characters")
     if new_name.strip() == "" or new_name in (".", ".."):
-        raise ValueError("nazwa: pusta lub zarezerwowana")
+        raise ValueError("name: empty or reserved")
     dst = path.parent / new_name
     if dst.exists():
         raise FileExistsError(dst)
@@ -86,7 +86,7 @@ def move(path: Path, *, dst_library_root: Path, dst_rel_path: str) -> Path:
     try:
         dst.relative_to(dst_library_root)
     except ValueError as exc:
-        raise ValueError("target poza biblioteką docelową") from exc
+        raise ValueError("target outside destination library") from exc
     if dst.exists():
         raise FileExistsError(dst)
     dst.parent.mkdir(parents=True, exist_ok=True)
