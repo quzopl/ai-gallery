@@ -3,9 +3,54 @@
 <head>
   <meta charset="utf-8">
   <title>AI Gallery</title>
+  <link rel="stylesheet" href="/style.css">
 </head>
 <body>
-  <h1>AI Gallery</h1>
-  <p>Scaffolding works.</p>
+  <header class="topbar">
+    <div class="brand">🖼️ AI Gallery</div>
+    <div class="topbar-actions">
+      <button id="btn-add-library">+ Dodaj folder</button>
+      <button id="btn-rescan" title="Skanuj ponownie aktywną bibliotekę">⟳</button>
+    </div>
+    <input id="search" type="search" placeholder="🔍 szukaj w promptach (Enter)..." />
+  </header>
+
+  <main class="layout">
+    <aside id="sidebar" class="sidebar">
+      <section>
+        <h3>Biblioteki</h3>
+        <ul id="libraries"></ul>
+      </section>
+      <section>
+        <h3>Model</h3>
+        <ul id="filter-models" class="facets"></ul>
+      </section>
+      <section>
+        <h3>LoRA</h3>
+        <ul id="filter-loras" class="facets"></ul>
+      </section>
+    </aside>
+
+    <section id="gallery" class="gallery"></section>
+
+    <aside id="detail" class="detail hidden">
+      <button id="detail-close" class="close-btn" title="Esc">✕</button>
+      <img id="detail-img" alt="">
+      <div id="detail-meta"></div>
+      <div class="detail-actions">
+        <button id="btn-copy-prompt">📋 Kopiuj prompt</button>
+        <button id="btn-delete" class="danger">🗑 Do kosza</button>
+        <button id="btn-rename">✎ Zmień nazwę</button>
+      </div>
+    </aside>
+  </main>
+
+  <div id="lightbox" class="lightbox hidden">
+    <img id="lightbox-img" alt="">
+  </div>
+
+  <div id="toast"></div>
+
+  <script type="module" src="/app.js"></script>
 </body>
 </html>
