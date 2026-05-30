@@ -2,9 +2,11 @@
 from __future__ import annotations
 
 import asyncio
+import base64
 import os
 import threading
 from pathlib import Path
+from typing import Literal
 
 from fastapi import FastAPI, HTTPException
 from fastapi.responses import JSONResponse
@@ -142,6 +144,90 @@ def _start_observer(library_id: int, root: Path) -> None:
         on_image_removed=lambda iid: _broadcast({"type": "image_removed", "image_id": iid}),
     )
     state.observers[library_id] = handle
+
+
+# ---------- images ----------
+
+def _encode_cursor(sort_val: str, image_id: int) -> str:
+    raw = f"{sort_val}|{image_id}".encode("utf-8")
+    return base64.urlsafe_b64encode(raw).decode("ascii")
+
+
+def _decode_cursor(cur: str) -> tuple[str, int]:
+    raw = base64.urlsafe_b64decode(cur.encode("ascii")).decode("utf-8")
+    sort_val, image_id = raw.rsplit("|", 1)
+    return sort_val, int(image_id)
+
+
+@app.get("/api/images")
+def list_images(
+    library_id: int | None = None,
+    model: str | None = None,
+    lora: str | None = None,
+    q: str | None = None,
+    sort: Literal["mtime_desc", "mtime_asc"] = "mtime_desc",
+    cursor: str | None = None,
+    limit: int = 200,
+) -> dict:
+    limit = max(1, min(limit, 500))
+    where: list[str] = []
+    params: list = []
+    join = ""
+    if library_id is not None:
+        where.append("i.library_id = ?"); params.append(library_id)
+    if model:
+        where.append("i.model_name = ?"); params.append(model)
+    if lora:
+        join += " JOIN image_loras il ON il.image_id = i.id JOIN loras lo ON lo.id = il.lora_id"
+        where.append("lo.name = ?"); params.append(lora)
+    if q:
+        join += " JOIN images_fts fts ON fts.rowid = i.id"
+        where.append("images_fts MATCH ?"); params.append(q)
+
+    direction = "DESC" if sort == "mtime_desc" else "ASC"
+    op = "<" if direction == "DESC" else ">"
+    if cursor:
+        sort_val, last_id = _decode_cursor(cursor)
+        where.append(f"(i.mtime, i.id) {op} (?, ?)")
+        params.extend([int(sort_val), last_id])
+
+    sql = (
+        "SELECT DISTINCT i.id, i.library_id, i.rel_path, i.sha1, i.mtime, "
+        "i.width, i.height, i.source_kind, i.model_name "
+        f"FROM images i{join}"
+    )
+    if where:
+        sql += " WHERE " + " AND ".join(where)
+    sql += f" ORDER BY i.mtime {direction}, i.id {direction} LIMIT ?"
+    params.append(limit + 1)
+
+    con = db.readonly(DB_PATH)
+    rows = con.execute(sql, params).fetchall()
+    con.close()
+    items = [dict(r) for r in rows[:limit]]
+    next_cursor = None
+    if len(rows) > limit:
+        last = items[-1]
+        next_cursor = _encode_cursor(str(last["mtime"]), last["id"])
+    return {"items": items, "next_cursor": next_cursor}
+
+
+@app.get("/api/images/{image_id}")
+def get_image(image_id: int) -> dict:
+    con = db.readonly(DB_PATH)
+    row = con.execute("SELECT * FROM images WHERE id=?", (image_id,)).fetchone()
+    if not row:
+        con.close()
+        raise HTTPException(404)
+    loras = [dict(r) for r in con.execute(
+        "SELECT lo.name, il.strength FROM image_loras il "
+        "JOIN loras lo ON lo.id = il.lora_id WHERE il.image_id=?",
+        (image_id,),
+    ).fetchall()]
+    con.close()
+    out = dict(row)
+    out["loras"] = loras
+    return out
 
 
 app.mount("/", StaticFiles(directory=FRONTEND, html=True), name="frontend")
