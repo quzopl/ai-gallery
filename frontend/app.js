@@ -93,10 +93,98 @@ document.getElementById("btn-rescan").onclick = async () => {
   toast("Rescan rozpoczęty");
 };
 
-// ---------- gallery (placeholder w Task 15) ----------
-async function loadImages() {
-  // wypełni Task 15
+// ---------- gallery ----------
+const galleryEl = document.getElementById("gallery");
+
+let thumbObserver = null;
+function ensureThumbObserver() {
+  if (thumbObserver) return thumbObserver;
+  thumbObserver = new IntersectionObserver((entries) => {
+    for (const e of entries) {
+      if (!e.isIntersecting) continue;
+      const img = e.target;
+      const id = img.dataset.id;
+      img.src = `/api/images/${id}/thumb`;
+      img.onload = () => img.classList.add("loaded");
+      thumbObserver.unobserve(img);
+    }
+  }, { rootMargin: "200px" });
+  return thumbObserver;
 }
+
+let scrollObserver = null;
+function ensureScrollObserver(sentinel) {
+  if (scrollObserver) scrollObserver.disconnect();
+  scrollObserver = new IntersectionObserver((entries) => {
+    for (const e of entries) {
+      if (e.isIntersecting && state.nextCursor) {
+        loadMore();
+      }
+    }
+  }, { root: galleryEl, rootMargin: "400px" });
+  scrollObserver.observe(sentinel);
+}
+
+function buildImagesQuery() {
+  const params = new URLSearchParams();
+  if (state.activeLibraryId != null) params.set("library_id", state.activeLibraryId);
+  if (state.filters.model) params.set("model", state.filters.model);
+  if (state.filters.lora) params.set("lora", state.filters.lora);
+  if (state.filters.q) params.set("q", state.filters.q);
+  params.set("limit", "200");
+  if (state.nextCursor) params.set("cursor", state.nextCursor);
+  return params.toString();
+}
+
+async function loadImages() {
+  state.images = [];
+  state.nextCursor = null;
+  galleryEl.innerHTML = "";
+  await loadMore();
+}
+
+async function loadMore() {
+  const r = await api("/api/images?" + buildImagesQuery());
+  for (const item of r.items) {
+    state.images.push(item);
+    galleryEl.appendChild(renderTile(item));
+  }
+  state.nextCursor = r.next_cursor;
+  const old = galleryEl.querySelector(".sentinel");
+  if (old) old.remove();
+  if (state.nextCursor) {
+    const s = document.createElement("div");
+    s.className = "sentinel";
+    s.style.gridColumn = "1 / -1";
+    s.style.height = "1px";
+    galleryEl.appendChild(s);
+    ensureScrollObserver(s);
+  }
+}
+
+function renderTile(img) {
+  const div = document.createElement("div");
+  div.className = "tile";
+  div.dataset.id = img.id;
+  if (img.id === state.selectedId) div.classList.add("selected");
+  const i = document.createElement("img");
+  i.dataset.id = img.id;
+  i.alt = img.rel_path;
+  div.appendChild(i);
+  div.onclick = () => selectImage(img.id);
+  ensureThumbObserver().observe(i);
+  return div;
+}
+
+function selectImage(id) {
+  state.selectedId = id;
+  for (const t of galleryEl.querySelectorAll(".tile")) {
+    t.classList.toggle("selected", Number(t.dataset.id) === id);
+  }
+  openDetail(id);
+}
+
+function openDetail(_id) { /* Task 16 */ }
 
 // ---------- init ----------
 (async function init() {
