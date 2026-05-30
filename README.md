@@ -9,7 +9,10 @@ live via `watchdog` and `WebSocket`.
 Built with FastAPI on the backend and vanilla JavaScript on the frontend — no
 build step, no Node toolchain, no Docker.
 
-![Gallery overview](docs/screenshots/gallery.png)
+![Gallery overview — OLED theme](docs/screenshots/gallery.png)
+
+Three built-in themes (OLED · Light · Warm) and a grid ⇄ masonry view toggle,
+both switchable from the top bar.
 
 ## Features
 
@@ -43,12 +46,23 @@ build step, no Node toolchain, no Docker.
 
 ## Screenshots
 
-| | |
+### Themes
+
+| OLED (default) | Light | Warm |
+|---|---|---|
+| ![](docs/screenshots/gallery.png) | ![](docs/screenshots/gallery-light.png) | ![](docs/screenshots/gallery-warm.png) |
+
+### Views
+
+| Grid (square, default) | Masonry (preserves aspect ratio) |
 |---|---|
-| ![Main gallery view with sidebar facets](docs/screenshots/gallery.png) | ![Detail panel with prompt and tags](docs/screenshots/detail.png) |
-| Main view: virtual grid + sidebar with facets | Detail panel: full prompt, tags, actions |
-| ![Folder picker modal](docs/screenshots/picker.png) | ![Lightbox full-screen view](docs/screenshots/lightbox.png) |
-| Add library: server-side folder picker | Lightbox: full-screen image |
+| ![](docs/screenshots/gallery.png) | ![](docs/screenshots/masonry-warm.png) |
+
+### Panels
+
+| Detail panel | Folder picker | Lightbox |
+|---|---|---|
+| ![](docs/screenshots/detail.png) | ![](docs/screenshots/picker.png) | ![](docs/screenshots/lightbox.png) |
 
 ## Quick start
 

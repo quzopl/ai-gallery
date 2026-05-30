@@ -1,20 +1,41 @@
 <!DOCTYPE html>
-<html lang="en">
+<html lang="en" data-theme="oled">
 <head>
   <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>AI Gallery</title>
-  <link rel="stylesheet" href="/style.css?v=8">
+
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;600&family=Space+Grotesk:wght@400;500;600;700&display=swap" rel="stylesheet">
+
+  <link rel="stylesheet" href="/style.css?v=9">
 </head>
 <body>
   <header class="topbar">
-    <div class="brand">🖼️ AI Gallery</div>
+    <div class="brand">AI Gallery</div>
+
+    <div class="seg" id="theme-switch" role="group" aria-label="Theme">
+      <span class="seg-thumb"></span>
+      <button data-theme-val="oled" title="OLED black">OLED</button>
+      <button data-theme-val="light" title="Light">Light</button>
+      <button data-theme-val="warm" title="Light warm">Warm</button>
+    </div>
+
+    <div class="seg" id="view-switch" role="group" aria-label="View">
+      <span class="seg-thumb"></span>
+      <button data-view-val="grid" title="Square grid">Grid</button>
+      <button data-view-val="masonry" title="Masonry">Masonry</button>
+    </div>
+
+    <input id="search" type="search" placeholder="🔍  search prompts (Enter)…" />
+
     <div class="topbar-actions">
       <button id="btn-add-library">+ Add folder</button>
       <button id="btn-rescan" title="Rescan active library">⟳</button>
       <button id="btn-tile-smaller" title="Smaller tiles (Ctrl+-)">−</button>
       <button id="btn-tile-bigger" title="Larger tiles (Ctrl+=)">+</button>
     </div>
-    <input id="search" type="search" placeholder="🔍 search prompts (Enter)..." />
   </header>
 
   <main class="layout">
@@ -78,7 +99,7 @@
       </header>
       <ul id="picker-list" class="picker-list"></ul>
       <footer class="picker-foot">
-        <label>Library name:
+        <label>Library name
           <input id="picker-name" type="text" placeholder="(folder name)">
         </label>
         <div class="picker-actions">
@@ -91,6 +112,7 @@
 
   <div id="toast"></div>
 
-  <script type="module" src="/app.js?v=8"></script>
+  <script type="module" src="/app.js?v=9"></script>
+  <script src="/theme.js?v=9"></script>
 </body>
 </html>
