@@ -230,4 +230,110 @@ def get_image(image_id: int) -> dict:
     return out
 
 
+from fastapi.responses import FileResponse, Response
+
+
+@app.get("/api/images/{image_id}/thumb")
+def get_thumb(image_id: int) -> Response:
+    con = db.readonly(DB_PATH)
+    row = con.execute(
+        "SELECT i.sha1, i.rel_path, l.path AS lib_path FROM images i "
+        "JOIN libraries l ON l.id = i.library_id WHERE i.id=?",
+        (image_id,),
+    ).fetchone()
+    con.close()
+    if not row:
+        raise HTTPException(404)
+    src = Path(row["lib_path"]) / row["rel_path"]
+    if not src.exists():
+        raise HTTPException(404, "źródło nie istnieje")
+    out = thumbs.get_or_generate(src, sha1=row["sha1"], cache_dir=THUMBS_DIR)
+    return FileResponse(out, media_type="image/webp",
+                        headers={"Cache-Control": "public, max-age=31536000, immutable"})
+
+
+@app.get("/api/images/{image_id}/file")
+def get_file(image_id: int) -> FileResponse:
+    con = db.readonly(DB_PATH)
+    row = con.execute(
+        "SELECT i.rel_path, l.path AS lib_path FROM images i "
+        "JOIN libraries l ON l.id = i.library_id WHERE i.id=?",
+        (image_id,),
+    ).fetchone()
+    con.close()
+    if not row:
+        raise HTTPException(404)
+    src = Path(row["lib_path"]) / row["rel_path"]
+    if not src.exists():
+        raise HTTPException(404)
+    return FileResponse(src)
+
+
+@app.get("/api/facets")
+def facets() -> dict:
+    con = db.readonly(DB_PATH)
+    models = [dict(r) for r in con.execute(
+        "SELECT model_name AS name, COUNT(*) AS count FROM images "
+        "WHERE model_name IS NOT NULL GROUP BY model_name ORDER BY count DESC"
+    ).fetchall()]
+    loras = [dict(r) for r in con.execute(
+        "SELECT lo.name, COUNT(*) AS count FROM image_loras il "
+        "JOIN loras lo ON lo.id = il.lora_id "
+        "GROUP BY lo.name ORDER BY count DESC"
+    ).fetchall()]
+    con.close()
+    return {"models": models, "loras": loras}
+
+
+@app.post("/api/libraries/{library_id}/rescan")
+def rescan_library(library_id: int) -> dict:
+    con = db.readonly(DB_PATH)
+    row = con.execute("SELECT path FROM libraries WHERE id=?", (library_id,)).fetchone()
+    con.close()
+    if not row:
+        raise HTTPException(404)
+    _start_initial_scan(library_id, Path(row["path"]))
+    _sweep_thumbs()
+    return {"status": "scan_started"}
+
+
+@app.delete("/api/libraries/{library_id}")
+def delete_library(library_id: int) -> dict:
+    con = db.readonly(DB_PATH)
+    exists = con.execute("SELECT 1 FROM libraries WHERE id=?", (library_id,)).fetchone()
+    con.close()
+    if not exists:
+        raise HTTPException(404)
+    h = state.observers.pop(library_id, None)
+    if h:
+        scanner.stop_watchdog(h)
+    def _del(con):
+        con.execute("DELETE FROM libraries WHERE id=?", (library_id,))
+    db._submit(state.writer, _del)  # type: ignore[arg-type]
+    return {"status": "deleted"}
+
+
+def _sweep_thumbs() -> int:
+    """Usuń sieroty z cache miniatur."""
+    con = db.readonly(DB_PATH)
+    known = {r["sha1"] for r in con.execute(
+        "SELECT DISTINCT sha1 FROM images WHERE sha1 IS NOT NULL"
+    )}
+    con.close()
+    return thumbs.sweep(THUMBS_DIR, known_sha1s=known)
+
+
+@app.on_event("startup")
+def _on_startup() -> None:
+    """Po starcie: re-attach observery dla istniejących bibliotek + sweep."""
+    con = db.readonly(DB_PATH)
+    libs = [dict(r) for r in con.execute("SELECT id, path FROM libraries")]
+    con.close()
+    for lib in libs:
+        p = Path(lib["path"])
+        if p.exists() and p.is_dir():
+            _start_observer(lib["id"], p)
+    _sweep_thumbs()
+
+
 app.mount("/", StaticFiles(directory=FRONTEND, html=True), name="frontend")
