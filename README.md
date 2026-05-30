@@ -82,6 +82,11 @@ Then open <http://127.0.0.1:8923>. Override the port via `PORT=9000 ./run.sh`.
 Click **+ Add folder**, point it at a directory of AI-generated PNGs/JPGs, and
 the gallery populates as the scan runs.
 
+> **Want to try it without any data?** Open <http://127.0.0.1:8923/demo.html>
+> instead — it ships with a tiny mock backend (procedural thumbnails, fake
+> filesystem, sample images) so every feature works in isolation. Useful for
+> evaluating the UI before pointing it at your own collection.
+
 ## Usage
 
 ### Adding libraries
