@@ -163,7 +163,7 @@ function ensureThumbObserver() {
       if (!e.isIntersecting) continue;
       const img = e.target;
       const id = img.dataset.id;
-      img.src = `/api/images/${id}/thumb`;
+      img.src = window.__mockImg ? window.__mockImg(Number(id)) : `/api/images/${id}/thumb`;
       img.onload = () => img.classList.add("loaded");
       thumbObserver.unobserve(img);
     }
@@ -259,7 +259,7 @@ const lightboxImg = document.getElementById("lightbox-img");
 
 async function openDetail(id) {
   const d = await api(`/api/images/${id}`);
-  detailImg.src = `/api/images/${id}/file`;
+  detailImg.src = window.__mockImg ? window.__mockImg(Number(id)) : `/api/images/${id}/file`;
   detailMeta.innerHTML = "";
   const dl = document.createElement("dl");
   function add(k, v) {
