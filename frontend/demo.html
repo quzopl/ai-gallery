@@ -1,0 +1,121 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="oled">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>AI Gallery — demo</title>
+
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;600&family=Space+Grotesk:wght@400;500;600;700&display=swap" rel="stylesheet">
+
+  <link rel="stylesheet" href="/style.css?v=9">
+</head>
+<body>
+  <header class="topbar">
+    <div class="brand">AI Gallery</div>
+
+    <div class="seg" id="theme-switch" role="group" aria-label="Theme">
+      <span class="seg-thumb"></span>
+      <button data-theme-val="oled" title="OLED black">OLED</button>
+      <button data-theme-val="light" title="Light">Light</button>
+      <button data-theme-val="warm" title="Light warm">Warm</button>
+    </div>
+
+    <div class="seg" id="view-switch" role="group" aria-label="View">
+      <span class="seg-thumb"></span>
+      <button data-view-val="grid" title="Square grid">Grid</button>
+      <button data-view-val="masonry" title="Masonry">Masonry</button>
+    </div>
+
+    <input id="search" type="search" placeholder="🔍  search prompts (Enter)…" />
+
+    <div class="topbar-actions">
+      <button id="btn-add-library">+ Add folder</button>
+      <button id="btn-rescan" title="Rescan active library">⟳</button>
+      <button id="btn-tile-smaller" title="Smaller tiles (Ctrl+-)">−</button>
+      <button id="btn-tile-bigger" title="Larger tiles (Ctrl+=)">+</button>
+    </div>
+  </header>
+
+  <main class="layout">
+    <aside id="sidebar" class="sidebar">
+      <section>
+        <h3>View</h3>
+        <ul id="quick-filters">
+          <li id="qf-all" class="active">📚 All</li>
+          <li id="qf-favorites">★ Favorites</li>
+        </ul>
+      </section>
+      <section>
+        <h3>Libraries</h3>
+        <ul id="libraries"></ul>
+      </section>
+      <section>
+        <h3>Model</h3>
+        <ul id="filter-models" class="facets"></ul>
+      </section>
+      <section>
+        <h3>LoRA</h3>
+        <ul id="filter-loras" class="facets"></ul>
+      </section>
+      <section>
+        <h3>Tags</h3>
+        <ul id="filter-tags" class="facets"></ul>
+      </section>
+    </aside>
+
+    <section id="gallery" class="gallery"></section>
+
+    <aside id="detail" class="detail hidden">
+      <button id="detail-close" class="close-btn" title="Esc">✕</button>
+      <img id="detail-img" alt="">
+      <div id="detail-meta"></div>
+      <div class="detail-tags">
+        <div id="detail-tags-chips" class="tag-chips"></div>
+        <form id="detail-tag-form" class="tag-add">
+          <input id="detail-tag-input" type="text" placeholder="+ add tag (Enter)" autocomplete="off">
+        </form>
+      </div>
+      <div class="detail-actions">
+        <button id="btn-favorite">☆ Favorite</button>
+        <button id="btn-copy-prompt">📋 Copy prompt</button>
+        <button id="btn-delete" class="danger">🗑 Move to trash</button>
+        <button id="btn-rename">✎ Rename</button>
+      </div>
+    </aside>
+  </main>
+
+  <div id="lightbox" class="lightbox hidden">
+    <img id="lightbox-img" alt="">
+  </div>
+
+  <div id="picker" class="picker hidden">
+    <div class="picker-box">
+      <header class="picker-head">
+        <button id="picker-up" title="Up">↑</button>
+        <span id="picker-path"></span>
+        <button id="picker-close" title="Esc">✕</button>
+      </header>
+      <ul id="picker-list" class="picker-list"></ul>
+      <footer class="picker-foot">
+        <label>Library name
+          <input id="picker-name" type="text" placeholder="(folder name)">
+        </label>
+        <div class="picker-actions">
+          <button id="picker-cancel">Cancel</button>
+          <button id="picker-add" class="primary">+ Add this folder</button>
+        </div>
+      </footer>
+    </div>
+  </div>
+
+  <div id="toast"></div>
+
+  <!-- DEMO ONLY: mock backend with procedurally generated thumbnails + fake API.
+       Not used by index.html (production). -->
+  <script src="/mock.js"></script>
+  <script type="module" src="/app.js?v=9"></script>
+  <script src="/theme.js?v=9"></script>
+</body>
+</html>
