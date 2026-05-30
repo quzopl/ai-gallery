@@ -98,11 +98,34 @@ END;
 
 
 def init_schema(db_path: Path) -> None:
-    """Utwórz tabele/indeksy/triggery jeśli ich nie ma."""
+    """Utwórz tabele/indeksy/triggery jeśli ich nie ma + lekkie migracje."""
     db_path.parent.mkdir(parents=True, exist_ok=True)
     con = sqlite3.connect(db_path)
     con.executescript("PRAGMA journal_mode=WAL;")
     con.executescript(SCHEMA)
+    # migracja: is_favorite (dodane po MVP)
+    try:
+        con.execute("ALTER TABLE images ADD COLUMN is_favorite INTEGER NOT NULL DEFAULT 0")
+    except sqlite3.OperationalError:
+        pass  # już istnieje
+    con.execute(
+        "CREATE INDEX IF NOT EXISTS idx_images_favorite ON images(is_favorite) "
+        "WHERE is_favorite=1"
+    )
+    # migracja: tags (dodane po MVP)
+    con.executescript("""
+        CREATE TABLE IF NOT EXISTS tags (
+            id   INTEGER PRIMARY KEY,
+            name TEXT NOT NULL UNIQUE
+        );
+        CREATE TABLE IF NOT EXISTS image_tags (
+            image_id INTEGER NOT NULL REFERENCES images(id) ON DELETE CASCADE,
+            tag_id   INTEGER NOT NULL REFERENCES tags(id) ON DELETE CASCADE,
+            PRIMARY KEY (image_id, tag_id)
+        );
+        CREATE INDEX IF NOT EXISTS idx_image_tags_tag ON image_tags(tag_id);
+    """)
+    con.commit()
     con.close()
 
 
@@ -244,6 +267,41 @@ def _delete_image(con: sqlite3.Connection, *, image_id: int) -> None:
 
 def delete_image(w: Writer, *, image_id: int) -> None:
     _submit(w, _delete_image, image_id=image_id)
+
+
+def _set_favorite(con: sqlite3.Connection, *, image_id: int, value: bool) -> None:
+    con.execute("UPDATE images SET is_favorite=? WHERE id=?", (1 if value else 0, image_id))
+
+
+def set_favorite(w: Writer, *, image_id: int, value: bool) -> None:
+    _submit(w, _set_favorite, image_id=image_id, value=value)
+
+
+def _set_image_tags(con: sqlite3.Connection, *, image_id: int, tag_names: list[str]) -> None:
+    """Zastąp wszystkie tagi obrazu. Brakujące tagi tworzy."""
+    con.execute("DELETE FROM image_tags WHERE image_id=?", (image_id,))
+    for raw in tag_names:
+        name = raw.strip()
+        if not name:
+            continue
+        con.execute("INSERT OR IGNORE INTO tags (name) VALUES (?)", (name,))
+        tag_id = con.execute("SELECT id FROM tags WHERE name=?", (name,)).fetchone()[0]
+        con.execute(
+            "INSERT OR IGNORE INTO image_tags (image_id, tag_id) VALUES (?, ?)",
+            (image_id, tag_id),
+        )
+
+
+def set_image_tags(w: Writer, *, image_id: int, tag_names: list[str]) -> None:
+    _submit(w, _set_image_tags, image_id=image_id, tag_names=tag_names)
+
+
+def _delete_tag(con: sqlite3.Connection, *, tag_id: int) -> None:
+    con.execute("DELETE FROM tags WHERE id=?", (tag_id,))  # cascades junction
+
+
+def delete_tag(w: Writer, *, tag_id: int) -> None:
+    _submit(w, _delete_tag, tag_id=tag_id)
 
 
 def _log_file_op(

@@ -42,7 +42,10 @@ def extract(path: Path) -> dict[str, Any]:
         with Image.open(path) as img:
             out["width"], out["height"] = img.size
             text = getattr(img, "text", {}) or {}
-            if "prompt" in text or "workflow" in text:
+            # Priorytet: nasz własny chunk z ComfyUI plugina (idealne dane).
+            if "ai_gallery_meta" in text and _parse_ai_gallery_meta(text["ai_gallery_meta"], out):
+                pass
+            elif "prompt" in text or "workflow" in text:
                 _parse_comfyui(text, out)
             elif "parameters" in text:
                 _parse_a1111(text["parameters"], out)
@@ -54,6 +57,44 @@ def extract(path: Path) -> dict[str, Any]:
         # corrupt/unreadable — zwracamy co mamy (puste pola)
         pass
     return out
+
+
+def _parse_ai_gallery_meta(raw: str, out: dict[str, Any]) -> bool:
+    """Parsuj chunk 'ai_gallery_meta' z naszego pluginu ComfyUI.
+    Zwróć True jeśli dane były poprawne i zapisaliśmy do out."""
+    try:
+        data = json.loads(raw)
+    except (json.JSONDecodeError, ValueError):
+        return False
+    if not isinstance(data, dict):
+        return False
+    out["source_kind"] = "ai_gallery"
+    out["raw_metadata"] = raw
+    for key in ("prompt", "negative", "model_name", "sampler"):
+        v = data.get(key)
+        if isinstance(v, str):
+            out[key] = v
+    for key in ("steps", "seed"):
+        v = data.get(key)
+        if isinstance(v, (int, float)):
+            out[key] = int(v)
+    if isinstance(data.get("cfg"), (int, float)):
+        out["cfg"] = float(data["cfg"])
+    loras_raw = data.get("loras") or []
+    loras: list[tuple[str, float | None]] = []
+    for item in loras_raw:
+        if isinstance(item, dict) and isinstance(item.get("name"), str):
+            s = item.get("strength")
+            try:
+                strength = float(s) if s is not None else None
+            except (TypeError, ValueError):
+                strength = None
+            loras.append((item["name"], strength))
+    out["loras"] = loras
+    if isinstance(data.get("width"), int) and isinstance(data.get("height"), int):
+        out["width"] = data["width"]
+        out["height"] = data["height"]
+    return True
 
 
 def _read_exif_user_comment(img: Image.Image) -> str | None:

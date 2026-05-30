@@ -16,7 +16,7 @@ fi
 echo ">> Synchronizuję zależności…"
 uv pip install -r requirements.txt
 
-PORT="${PORT:-8000}"
+PORT="${PORT:-8923}"
 echo ""
 echo ">> http://127.0.0.1:${PORT}"
 echo ""

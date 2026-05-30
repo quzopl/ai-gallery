@@ -11,7 +11,7 @@ z FTS5. Reaguje na zmiany w plikach na żywo.
 ./run.sh
 ```
 
-Otwórz http://127.0.0.1:8000.
+Otwórz http://127.0.0.1:8923.
 
 ## Wymagania
 

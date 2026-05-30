@@ -62,15 +62,111 @@ button.danger { color: #ff8a8a; }
   grid-template-columns: repeat(auto-fill, minmax(var(--tile), 1fr));
   gap: 6px; align-content: start;
 }
+/* Kafelek: padding-top: 100% wymusza wysokość = szerokość (square),
+   img absolute zajmuje cały kafelek z object-fit: cover (crop do kwadratu). */
 .tile {
-  aspect-ratio: 1; background: var(--bg-elev);
-  border: 1px solid var(--border); border-radius: 4px;
-  overflow: hidden; cursor: pointer; position: relative;
+  background: var(--bg-elev);
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  overflow: hidden;
+  cursor: pointer;
+  position: relative;
+  width: 100%;
+  padding-top: 100%;
+  height: 0;
+  align-self: start;
 }
-.tile.selected { outline: 2px solid var(--accent); }
-.tile img { width: 100%; height: 100%; object-fit: cover;
-  opacity: 0; transition: opacity 0.2s; }
+.tile.selected { outline: 2px solid var(--accent); outline-offset: -2px; }
+.tile img {
+  position: absolute;
+  top: 0; left: 0;
+  width: 100%; height: 100%;
+  object-fit: cover;
+  display: block;
+  opacity: 0;
+  transition: opacity 0.2s;
+}
 .tile img.loaded { opacity: 1; }
+.tile .star-badge {
+  position: absolute; top: 4px; right: 6px;
+  font-size: 18px; line-height: 1;
+  color: gold; text-shadow: 0 0 3px rgba(0,0,0,0.85);
+  pointer-events: none;
+  opacity: 0;
+}
+.tile.fav .star-badge { opacity: 1; }
+
+#btn-favorite.active {
+  background: rgba(255, 200, 0, 0.15);
+  border-color: gold;
+  color: gold;
+}
+
+#quick-filters li { font-weight: 500; }
+
+/* Chmura pills dla modelu / LoRA (cloud layout) */
+.facets.cloud {
+  display: flex; flex-wrap: wrap; gap: 4px;
+  padding: 4px 2px;
+}
+.facets.cloud li {
+  display: inline-flex; align-items: center; gap: 4px;
+  padding: 3px 8px; border-radius: 11px;
+  background: var(--bg-elev); border: 1px solid var(--border);
+  font-size: 12px; line-height: 1.3;
+  max-width: 100%;
+  cursor: pointer;
+}
+.facets.cloud li:hover {
+  background: #3a3a3a; border-color: #555;
+}
+.facets.cloud li.active {
+  background: var(--accent); border-color: var(--accent); color: white;
+}
+.facets.cloud li .label {
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+  max-width: 140px;
+}
+.facets.cloud li .count {
+  font-size: 10px; opacity: 0.7;
+  background: rgba(0,0,0,0.25); padding: 1px 5px; border-radius: 8px;
+}
+.facets.cloud li.active .count { background: rgba(255,255,255,0.25); }
+.facets.cloud li.reset {
+  background: transparent; border: 1px dashed var(--border);
+  font-style: italic; opacity: 0.7;
+  font-size: 11px;
+}
+.facets.cloud li.reset:hover { opacity: 1; }
+.facets.cloud li.reset.active {
+  background: transparent; color: var(--fg); border-color: var(--accent);
+  opacity: 1;
+}
+
+/* Tagi w detail panelu */
+.detail-tags { margin: 10px 0 4px; }
+.tag-chips { display: flex; flex-wrap: wrap; gap: 4px; min-height: 22px; }
+.tag-chip {
+  display: inline-flex; align-items: center; gap: 4px;
+  background: var(--bg-elev); border: 1px solid var(--border);
+  padding: 2px 6px 2px 8px; border-radius: 12px;
+  font-size: 12px; line-height: 1.4;
+}
+.tag-chip .x {
+  cursor: pointer; opacity: 0.5; padding: 0 2px;
+  font-weight: bold;
+}
+.tag-chip .x:hover { opacity: 1; color: var(--danger); }
+.tag-add input {
+  width: 100%; margin-top: 6px; padding: 4px 8px;
+  background: var(--bg-elev); border: 1px solid var(--border);
+  color: var(--fg); border-radius: 4px; font-size: 12px;
+}
+
+/* Tagi w sidebarze (facets) — checkbox layout */
+.facets li.tag-facet {
+  padding-left: 4px;
+}
 
 .detail {
   background: var(--bg-panel); border-left: 1px solid var(--border);
@@ -91,6 +187,46 @@ button.danger { color: #ff8a8a; }
 }
 .lightbox.hidden { display: none; }
 #lightbox-img { max-width: 95vw; max-height: 95vh; }
+
+.picker {
+  position: fixed; inset: 0; background: rgba(0,0,0,0.7);
+  display: flex; justify-content: center; align-items: center;
+  z-index: 150;
+}
+.picker.hidden { display: none; }
+.picker-box {
+  background: var(--bg-panel); border: 1px solid var(--border);
+  border-radius: 6px; width: min(640px, 90vw); height: min(70vh, 600px);
+  display: flex; flex-direction: column; overflow: hidden;
+}
+.picker-head {
+  display: flex; align-items: center; gap: 8px;
+  padding: 8px 12px; border-bottom: 1px solid var(--border);
+  background: var(--bg);
+}
+.picker-head #picker-path {
+  flex: 1; font-family: monospace; font-size: 12px;
+  color: var(--fg-dim); overflow: hidden; text-overflow: ellipsis;
+  white-space: nowrap; direction: rtl; text-align: left;
+}
+.picker-list {
+  flex: 1; overflow-y: auto; margin: 0; padding: 4px 0; list-style: none;
+}
+.picker-list li {
+  padding: 6px 14px; cursor: pointer; display: flex; align-items: center; gap: 6px;
+}
+.picker-list li:hover { background: var(--bg-elev); }
+.picker-list li.unreadable { color: var(--fg-dim); cursor: not-allowed; }
+.picker-list li::before { content: "📁"; }
+.picker-foot {
+  padding: 10px 12px; border-top: 1px solid var(--border);
+  display: flex; flex-direction: column; gap: 8px; background: var(--bg);
+}
+.picker-foot label { font-size: 12px; color: var(--fg-dim); display: flex; flex-direction: column; gap: 4px; }
+.picker-foot input { background: var(--bg-elev); border: 1px solid var(--border);
+  color: var(--fg); padding: 6px 10px; border-radius: 4px; font-size: 14px; }
+.picker-actions { display: flex; justify-content: flex-end; gap: 6px; }
+.picker-actions button.primary { background: var(--accent); border-color: var(--accent); color: white; }
 
 #toast {
   position: fixed; bottom: 20px; left: 50%; transform: translateX(-50%);
