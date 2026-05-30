@@ -145,3 +145,161 @@ def _set_last_scan_op(con, *, library_id: int) -> None:
 
 def _set_last_scan(writer: db.Writer, *, library_id: int) -> None:
     db._submit(writer, _set_last_scan_op, library_id=library_id)  # type: ignore[arg-type]
+
+
+# ---------- watchdog observer ----------
+
+from watchdog.events import FileSystemEvent, FileSystemEventHandler
+from watchdog.observers import Observer
+
+
+class _DebouncedHandler(FileSystemEventHandler):
+    """Zbiera eventy do bucketów per ścieżka, flush co debounce_ms."""
+
+    def __init__(
+        self, *,
+        library_id: int, library_root: Path,
+        writer: db.Writer, db_path: Path,
+        on_image_added: Callable[[int], None],
+        on_image_removed: Callable[[int], None],
+        debounce_ms: int,
+    ) -> None:
+        self.library_id = library_id
+        self.library_root = library_root.resolve()
+        self.writer = writer
+        self.db_path = db_path
+        self.on_added = on_image_added
+        self.on_removed = on_image_removed
+        self.debounce_s = debounce_ms / 1000.0
+        self._lock = threading.Lock()
+        self._pending: dict[str, tuple[str, float]] = {}
+        self._stop = threading.Event()
+        self._flusher = threading.Thread(target=self._flush_loop, daemon=True,
+                                         name=f"watchdog-flush-{library_id}")
+        self._flusher.start()
+
+    def _enqueue(self, kind: str, src_path: str) -> None:
+        p = Path(src_path)
+        if p.suffix.lower() not in IMAGE_EXTS:
+            return
+        with self._lock:
+            self._pending[str(p)] = (kind, time.monotonic())
+
+    def on_created(self, event: FileSystemEvent) -> None:
+        if not event.is_directory:
+            self._enqueue("upsert", event.src_path)
+
+    def on_modified(self, event: FileSystemEvent) -> None:
+        if not event.is_directory:
+            self._enqueue("upsert", event.src_path)
+
+    def on_deleted(self, event: FileSystemEvent) -> None:
+        if not event.is_directory:
+            self._enqueue("delete", event.src_path)
+
+    def on_moved(self, event: FileSystemEvent) -> None:
+        if event.is_directory:
+            return
+        self._enqueue("delete", event.src_path)
+        self._enqueue("upsert", event.dest_path)
+
+    def _flush_loop(self) -> None:
+        while not self._stop.is_set():
+            time.sleep(self.debounce_s)
+            now = time.monotonic()
+            to_process: list[tuple[str, str]] = []
+            with self._lock:
+                ready = [(p, kind) for p, (kind, ts) in self._pending.items()
+                         if now - ts >= self.debounce_s]
+                for p, _ in ready:
+                    del self._pending[p]
+                to_process = ready
+            for path_str, kind in to_process:
+                self._process(Path(path_str), kind)
+
+    def _process(self, path: Path, kind: str) -> None:
+        try:
+            rel = path.resolve().relative_to(self.library_root).as_posix()
+        except ValueError:
+            return
+        if kind == "delete":
+            con = db.readonly(self.db_path)
+            row = con.execute(
+                "SELECT id FROM images WHERE library_id=? AND rel_path=?",
+                (self.library_id, rel),
+            ).fetchone()
+            con.close()
+            if row:
+                db.delete_image(self.writer, image_id=row["id"])
+                self.on_removed(row["id"])
+        else:
+            if not path.is_file():
+                return
+            try:
+                stat = path.stat()
+            except OSError:
+                return
+            con = db.readonly(self.db_path)
+            row = con.execute(
+                "SELECT id, mtime, size_bytes FROM images "
+                "WHERE library_id=? AND rel_path=?",
+                (self.library_id, rel),
+            ).fetchone()
+            con.close()
+            if row and row["mtime"] == int(stat.st_mtime) and row["size_bytes"] == stat.st_size:
+                return
+            try:
+                _full_parse_and_upsert(
+                    writer=self.writer,
+                    library_id=self.library_id,
+                    library_root=self.library_root,
+                    file=path,
+                )
+            except Exception:  # noqa: BLE001
+                return
+            con = db.readonly(self.db_path)
+            new_row = con.execute(
+                "SELECT id FROM images WHERE library_id=? AND rel_path=?",
+                (self.library_id, rel),
+            ).fetchone()
+            con.close()
+            if new_row:
+                self.on_added(new_row["id"])
+
+    def stop(self) -> None:
+        self._stop.set()
+        self._flusher.join(timeout=2)
+
+
+class WatchHandle:
+    def __init__(self, observer: Observer, handler: _DebouncedHandler) -> None:
+        self.observer = observer
+        self.handler = handler
+
+
+def start_watchdog(
+    *,
+    library_id: int,
+    library_root: Path,
+    writer: db.Writer,
+    db_path: Path,
+    on_image_added: Callable[[int], None],
+    on_image_removed: Callable[[int], None],
+    debounce_ms: int = 500,
+) -> WatchHandle:
+    handler = _DebouncedHandler(
+        library_id=library_id, library_root=Path(library_root),
+        writer=writer, db_path=db_path,
+        on_image_added=on_image_added, on_image_removed=on_image_removed,
+        debounce_ms=debounce_ms,
+    )
+    observer = Observer()
+    observer.schedule(handler, str(library_root), recursive=True)
+    observer.start()
+    return WatchHandle(observer=observer, handler=handler)
+
+
+def stop_watchdog(h: WatchHandle) -> None:
+    h.handler.stop()
+    h.observer.stop()
+    h.observer.join(timeout=2)

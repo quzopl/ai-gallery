@@ -86,3 +86,55 @@ def test_rescan_skips_unchanged(tmp_path: Path, setup_db_writer) -> None:
                                   writer=writer, db_path=db_path)
     assert result["added"] == 0
     assert result["updated"] == 0
+
+
+def test_watchdog_picks_up_new_file(tmp_path: Path, setup_db_writer) -> None:
+    db_path, writer = setup_db_writer
+    lib_root = tmp_path / "lib"
+    lib_root.mkdir()
+    lib_id = db.add_library(writer, path=str(lib_root), name="lib")
+
+    added_ids: list[int] = []
+    observer = scanner.start_watchdog(
+        library_id=lib_id, library_root=lib_root,
+        writer=writer, db_path=db_path,
+        on_image_added=lambda iid: added_ids.append(iid),
+        on_image_removed=lambda iid: None,
+        debounce_ms=200,
+    )
+    try:
+        time.sleep(0.2)
+        _make_comfy_png(lib_root / "live.png", "live cat")
+        deadline = time.time() + 5
+        while time.time() < deadline and not added_ids:
+            time.sleep(0.1)
+        assert added_ids, "watchdog nie złapał nowego pliku w 5s"
+    finally:
+        scanner.stop_watchdog(observer)
+
+
+def test_watchdog_handles_delete(tmp_path: Path, setup_db_writer) -> None:
+    db_path, writer = setup_db_writer
+    lib_root = tmp_path / "lib"
+    _make_comfy_png(lib_root / "x.png")
+    lib_id = db.add_library(writer, path=str(lib_root), name="lib")
+    scanner.scan_library(library_id=lib_id, library_root=lib_root,
+                         writer=writer, db_path=db_path)
+
+    removed_ids: list[int] = []
+    observer = scanner.start_watchdog(
+        library_id=lib_id, library_root=lib_root,
+        writer=writer, db_path=db_path,
+        on_image_added=lambda iid: None,
+        on_image_removed=lambda iid: removed_ids.append(iid),
+        debounce_ms=200,
+    )
+    try:
+        time.sleep(0.2)
+        (lib_root / "x.png").unlink()
+        deadline = time.time() + 5
+        while time.time() < deadline and not removed_ids:
+            time.sleep(0.1)
+        assert removed_ids
+    finally:
+        scanner.stop_watchdog(observer)
