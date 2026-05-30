@@ -93,3 +93,34 @@ def test_list_images_with_fts(app_with_tmpdb) -> None:
     assert r and r["items"], "FTS nie znalazł 'cat'"
     r2 = client.get("/api/images?q=xyzunknown").json()
     assert r2["items"] == []
+
+
+def test_thumbnail_served(app_with_tmpdb) -> None:
+    client, tmp_path = app_with_tmpdb
+    lib_path = tmp_path / "photos"; lib_path.mkdir()
+    _make_comfy_png(lib_path / "a.png")
+    client.post("/api/libraries", json={"path": str(lib_path)})
+    import time
+    deadline = time.time() + 5
+    img_id = None
+    while time.time() < deadline:
+        items = client.get("/api/images").json()["items"]
+        if items:
+            img_id = items[0]["id"]; break
+        time.sleep(0.2)
+    assert img_id is not None
+    r = client.get(f"/api/images/{img_id}/thumb")
+    assert r.status_code == 200
+    assert r.headers["content-type"] == "image/webp"
+    assert len(r.content) > 0
+
+
+def test_facets(app_with_tmpdb) -> None:
+    client, tmp_path = app_with_tmpdb
+    lib_path = tmp_path / "photos"; lib_path.mkdir()
+    _make_comfy_png(lib_path / "a.png")
+    client.post("/api/libraries", json={"path": str(lib_path)})
+    import time
+    time.sleep(1.5)
+    r = client.get("/api/facets").json()
+    assert "models" in r and "loras" in r
