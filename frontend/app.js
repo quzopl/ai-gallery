@@ -383,8 +383,64 @@ document.getElementById("btn-rename").onclick = async () => {
   }
 };
 
+// ---------- prefs ----------
+function loadPrefs() {
+  const t = Number(localStorage.getItem("tileSize") || "180");
+  document.documentElement.style.setProperty("--tile", `${t}px`);
+}
+function setTileSize(px) {
+  const clamped = Math.max(80, Math.min(400, px));
+  localStorage.setItem("tileSize", String(clamped));
+  document.documentElement.style.setProperty("--tile", `${clamped}px`);
+}
+document.getElementById("btn-tile-smaller").onclick = () => {
+  setTileSize(parseFloat(getComputedStyle(document.documentElement).getPropertyValue("--tile")) - 30);
+};
+document.getElementById("btn-tile-bigger").onclick = () => {
+  setTileSize(parseFloat(getComputedStyle(document.documentElement).getPropertyValue("--tile")) + 30);
+};
+
+// ---------- hotkeys ----------
+document.addEventListener("keydown", (e) => {
+  if (["INPUT", "TEXTAREA"].includes(document.activeElement?.tagName)) {
+    if (e.key === "Escape") document.activeElement.blur();
+    return;
+  }
+  if (e.key === "/") { e.preventDefault(); searchEl.focus(); return; }
+  if (e.key === "Escape") {
+    if (!lightboxEl.classList.contains("hidden")) {
+      lightboxEl.classList.add("hidden");
+    } else {
+      closeDetail();
+    }
+    return;
+  }
+  if (e.key === "ArrowLeft" || e.key === "ArrowRight") {
+    if (state.selectedId == null) return;
+    const idx = state.images.findIndex(x => x.id === state.selectedId);
+    const nextIdx = e.key === "ArrowLeft" ? idx - 1 : idx + 1;
+    const next = state.images[nextIdx];
+    if (next) selectImage(next.id);
+    return;
+  }
+  if (e.key === "Delete" && state.selectedId != null) {
+    document.getElementById("btn-delete").click();
+    return;
+  }
+  if ((e.ctrlKey || e.metaKey) && e.key === "c" && state.selectedId != null) {
+    document.getElementById("btn-copy-prompt").click();
+    return;
+  }
+  if ((e.ctrlKey || e.metaKey) && (e.key === "-" || e.key === "=")) {
+    e.preventDefault();
+    if (e.key === "-") document.getElementById("btn-tile-smaller").click();
+    else document.getElementById("btn-tile-bigger").click();
+  }
+});
+
 // ---------- init ----------
 (async function init() {
+  loadPrefs();
   const saved = localStorage.getItem("activeLibraryId");
   state.activeLibraryId = saved ? Number(saved) || null : null;
   await refreshLibraries();
