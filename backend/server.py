@@ -13,7 +13,9 @@ from fastapi.responses import JSONResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 
-from . import db, scanner, thumbs
+from fastapi import WebSocket, WebSocketDisconnect
+
+from . import db, fileops, scanner, thumbs
 
 ROOT = Path(__file__).resolve().parent.parent
 FRONTEND = ROOT / "frontend"
@@ -31,6 +33,7 @@ class AppState:
         self.observers: dict[int, scanner.WatchHandle] = {}
         self.scan_cancel: dict[int, threading.Event] = {}
         self.ws_clients: set = set()
+        self._loop: asyncio.AbstractEventLoop | None = None
 
     def shutdown(self) -> None:
         for h in self.observers.values():
@@ -43,10 +46,12 @@ state = AppState()
 
 def _broadcast(msg: dict) -> None:
     """Sync broadcast — wywołuje async send w event loopie głównym."""
-    try:
-        loop = asyncio.get_event_loop_policy().get_event_loop()
-    except Exception:  # noqa: BLE001
-        return
+    loop = state._loop
+    if loop is None or not loop.is_running():
+        try:
+            loop = asyncio.get_event_loop_policy().get_event_loop()
+        except Exception:  # noqa: BLE001
+            return
     for ws in list(state.ws_clients):
         try:
             asyncio.run_coroutine_threadsafe(ws.send_json(msg), loop)
@@ -334,6 +339,134 @@ def _on_startup() -> None:
         if p.exists() and p.is_dir():
             _start_observer(lib["id"], p)
     _sweep_thumbs()
+
+
+class RenameRequest(BaseModel):
+    new_name: str
+
+
+class MoveRequest(BaseModel):
+    to_library_id: int
+    to_rel_path: str
+
+
+def _image_source_path(image_id: int) -> tuple[Path, int, str]:
+    con = db.readonly(DB_PATH)
+    row = con.execute(
+        "SELECT i.library_id, i.rel_path, l.path AS lib_path "
+        "FROM images i JOIN libraries l ON l.id=i.library_id WHERE i.id=?",
+        (image_id,),
+    ).fetchone()
+    con.close()
+    if not row:
+        raise HTTPException(404)
+    return Path(row["lib_path"]) / row["rel_path"], row["library_id"], row["rel_path"]
+
+
+@app.delete("/api/images/{image_id}")
+def delete_image(image_id: int) -> dict:
+    src, lib_id, rel = _image_source_path(image_id)
+    error: str | None = None
+    success = False
+    try:
+        fileops.move_to_trash(src)
+        db.delete_image(state.writer, image_id=image_id)
+        _broadcast({"type": "image_removed", "image_id": image_id})
+        success = True
+    except Exception as exc:  # noqa: BLE001
+        error = str(exc)
+    finally:
+        db.log_file_op(state.writer, op="delete", library_id=lib_id,
+                       from_path=str(src), to_path=None,
+                       success=success, error=error)
+    if not success:
+        raise HTTPException(500, error or "delete failed")
+    return {"status": "deleted"}
+
+
+@app.post("/api/images/{image_id}/rename")
+def rename_image(image_id: int, req: RenameRequest) -> dict:
+    src, lib_id, rel = _image_source_path(image_id)
+    error: str | None = None; success = False; dst: Path | None = None; new_rel = rel
+    try:
+        dst = fileops.rename(src, new_name=req.new_name)
+        con = db.readonly(DB_PATH)
+        lib_path = con.execute("SELECT path FROM libraries WHERE id=?", (lib_id,)).fetchone()["path"]
+        con.close()
+        new_rel = dst.resolve().relative_to(Path(lib_path).resolve()).as_posix()
+
+        def _upd(con):
+            con.execute("UPDATE images SET rel_path=? WHERE id=?", (new_rel, image_id))
+        db._submit(state.writer, _upd)  # type: ignore[arg-type]
+        _broadcast({"type": "image_changed", "image_id": image_id})
+        success = True
+    except (ValueError, FileExistsError, FileNotFoundError) as exc:
+        error = str(exc)
+        raise HTTPException(400, error)
+    except Exception as exc:  # noqa: BLE001
+        error = str(exc)
+        raise HTTPException(500, error)
+    finally:
+        db.log_file_op(state.writer, op="rename", library_id=lib_id,
+                       from_path=str(src), to_path=str(dst) if dst else None,
+                       success=success, error=error)
+    return {"status": "renamed", "new_rel_path": new_rel}
+
+
+@app.post("/api/images/{image_id}/move")
+def move_image(image_id: int, req: MoveRequest) -> dict:
+    src, src_lib_id, _ = _image_source_path(image_id)
+    con = db.readonly(DB_PATH)
+    dst_lib = con.execute("SELECT path FROM libraries WHERE id=?", (req.to_library_id,)).fetchone()
+    con.close()
+    if not dst_lib:
+        raise HTTPException(404, "docelowa biblioteka nie istnieje")
+    error: str | None = None; success = False; dst: Path | None = None
+    try:
+        dst = fileops.move(src, dst_library_root=Path(dst_lib["path"]),
+                           dst_rel_path=req.to_rel_path)
+
+        def _upd(con):
+            con.execute(
+                "UPDATE images SET library_id=?, rel_path=? WHERE id=?",
+                (req.to_library_id, req.to_rel_path, image_id),
+            )
+        db._submit(state.writer, _upd)  # type: ignore[arg-type]
+        _broadcast({"type": "image_changed", "image_id": image_id})
+        success = True
+    except (ValueError, FileExistsError) as exc:
+        raise HTTPException(400, str(exc))
+    except Exception as exc:  # noqa: BLE001
+        raise HTTPException(500, str(exc))
+    finally:
+        db.log_file_op(state.writer, op="move", library_id=src_lib_id,
+                       from_path=str(src), to_path=str(dst) if dst else None,
+                       success=success, error=error)
+    return {"status": "moved"}
+
+
+@app.get("/api/audit")
+def audit(limit: int = 100) -> list[dict]:
+    con = db.readonly(DB_PATH)
+    rows = con.execute(
+        "SELECT * FROM file_ops ORDER BY id DESC LIMIT ?", (min(limit, 1000),)
+    ).fetchall()
+    con.close()
+    return [dict(r) for r in rows]
+
+
+@app.websocket("/ws")
+async def ws_endpoint(ws: WebSocket) -> None:
+    await ws.accept()
+    state._loop = asyncio.get_event_loop()
+    state.ws_clients.add(ws)
+    try:
+        while True:
+            await ws.receive_text()
+    except WebSocketDisconnect:
+        pass
+    finally:
+        state.ws_clients.discard(ws)
 
 
 app.mount("/", StaticFiles(directory=FRONTEND, html=True), name="frontend")

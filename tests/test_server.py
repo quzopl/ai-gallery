@@ -124,3 +124,69 @@ def test_facets(app_with_tmpdb) -> None:
     time.sleep(1.5)
     r = client.get("/api/facets").json()
     assert "models" in r and "loras" in r
+
+
+def test_delete_image_moves_to_trash(app_with_tmpdb, monkeypatch, tmp_path) -> None:
+    monkeypatch.setenv("XDG_DATA_HOME", str(tmp_path / "xdg"))
+    client, _ = app_with_tmpdb
+    lib_path = tmp_path / "photos"; lib_path.mkdir()
+    _make_comfy_png(lib_path / "a.png")
+    client.post("/api/libraries", json={"path": str(lib_path)})
+    import time
+    deadline = time.time() + 5
+    img_id = None
+    while time.time() < deadline:
+        items = client.get("/api/images").json()["items"]
+        if items:
+            img_id = items[0]["id"]; break
+        time.sleep(0.2)
+    assert img_id
+    r = client.delete(f"/api/images/{img_id}")
+    assert r.status_code == 200
+    assert not (lib_path / "a.png").exists()
+    deadline = time.time() + 3
+    while time.time() < deadline:
+        if not client.get(f"/api/images/{img_id}").status_code == 200:
+            break
+        time.sleep(0.2)
+
+
+def test_rename_image(app_with_tmpdb) -> None:
+    client, tmp_path = app_with_tmpdb
+    lib_path = tmp_path / "photos"; lib_path.mkdir()
+    _make_comfy_png(lib_path / "old.png")
+    client.post("/api/libraries", json={"path": str(lib_path)})
+    import time
+    deadline = time.time() + 5
+    img_id = None
+    while time.time() < deadline:
+        items = client.get("/api/images").json()["items"]
+        if items:
+            img_id = items[0]["id"]; break
+        time.sleep(0.2)
+    r = client.post(f"/api/images/{img_id}/rename", json={"new_name": "new.png"})
+    assert r.status_code == 200, r.text
+    assert (lib_path / "new.png").exists()
+    assert not (lib_path / "old.png").exists()
+
+
+def test_websocket_receives_scan_done(app_with_tmpdb) -> None:
+    client, tmp_path = app_with_tmpdb
+    lib_path = tmp_path / "photos"; lib_path.mkdir()
+    _make_comfy_png(lib_path / "a.png")
+    with client.websocket_connect("/ws") as ws:
+        client.post("/api/libraries", json={"path": str(lib_path)})
+        import time
+        deadline = time.time() + 5
+        seen_done = False
+        while time.time() < deadline and not seen_done:
+            try:
+                msg = ws.receive_json()
+            except WebSocketDisconnect:
+                break
+            except Exception:
+                time.sleep(0.1)
+                continue
+            if msg.get("type") == "scan_done":
+                seen_done = True
+        assert seen_done
