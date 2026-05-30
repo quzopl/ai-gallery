@@ -348,6 +348,41 @@ function handleWSMessage(msg) {
   }
 }
 
+// ---------- file operations from UI ----------
+document.getElementById("btn-delete").onclick = async () => {
+  const id = Number(detailEl.dataset.imageId);
+  if (!id) return;
+  const d = state.images.find(x => x.id === id);
+  if (!confirm(`Przenieść do kosza?\n${d?.rel_path || id}`)) return;
+  try {
+    await api(`/api/images/${id}`, { method: "DELETE" });
+    toast("Przeniesione do kosza");
+    closeDetail();
+  } catch (err) {
+    toast("Błąd: " + err.message);
+  }
+};
+
+document.getElementById("btn-rename").onclick = async () => {
+  const id = Number(detailEl.dataset.imageId);
+  if (!id) return;
+  const d = state.images.find(x => x.id === id);
+  const currentName = (d?.rel_path || "").split("/").pop();
+  const newName = prompt("Nowa nazwa pliku:", currentName);
+  if (!newName || newName === currentName) return;
+  try {
+    await api(`/api/images/${id}/rename`, {
+      method: "POST",
+      body: JSON.stringify({ new_name: newName }),
+    });
+    toast("Zmieniono nazwę");
+    await loadImages();
+    openDetail(id);
+  } catch (err) {
+    toast("Błąd: " + err.message);
+  }
+};
+
 // ---------- init ----------
 (async function init() {
   const saved = localStorage.getItem("activeLibraryId");
