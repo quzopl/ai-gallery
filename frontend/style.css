@@ -315,6 +315,20 @@ button.danger:hover { background: var(--danger-soft); border-color: var(--danger
   border-radius: var(--r-pill);
 }
 .sidebar li.active .count { background: color-mix(in oklab, var(--accent), transparent 80%); color: var(--accent); }
+.sidebar .lib-del {
+  opacity: 0;
+  background: transparent;
+  border: 0;
+  color: var(--fg-faint);
+  font-size: 16px;
+  line-height: 1;
+  padding: 2px 6px;
+  border-radius: var(--r-sm);
+  cursor: pointer;
+  transition: opacity var(--t-fast), color var(--t-fast), background-color var(--t-fast);
+}
+.sidebar li:hover .lib-del { opacity: 1; }
+.sidebar .lib-del:hover { color: var(--danger, #e57373); background: var(--bg-3, rgba(255,255,255,.06)); }
 
 #quick-filters li { font-weight: 500; color: var(--fg); }
 

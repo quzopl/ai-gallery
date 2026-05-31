@@ -262,6 +262,12 @@
     }
     let m;
     if ((m = path.match(/^\/api\/libraries\/(\d+)\/rescan$/)) && method === "POST") return ok({ ok: true });
+    if ((m = path.match(/^\/api\/libraries\/(\d+)$/)) && method === "DELETE") {
+      const id = Number(m[1]);
+      const idx = LIBS.findIndex(L => L.id === id);
+      if (idx >= 0) LIBS.splice(idx, 1);
+      return ok({ status: "deleted" });
+    }
 
     // facets / tags
     if (path === "/api/facets") return ok({ models: countBy("model_name"), loras: loraCounts() });

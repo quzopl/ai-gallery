@@ -4,6 +4,8 @@ from __future__ import annotations
 import asyncio
 import base64
 import os
+import string
+import sys
 import threading
 from pathlib import Path
 from typing import Literal
@@ -550,9 +552,27 @@ async def ws_endpoint(ws: WebSocket) -> None:
         state.ws_clients.discard(ws)
 
 
+def _list_roots() -> list[dict]:
+    """Filesystem roots: Windows drive letters, otherwise '/'."""
+    if sys.platform == "win32":
+        roots = []
+        for letter in string.ascii_uppercase:
+            d = Path(f"{letter}:\\")
+            if d.exists():
+                try:
+                    readable = os.access(d, os.R_OK)
+                except OSError:
+                    readable = False
+                roots.append({"name": f"{letter}:\\", "path": str(d), "readable": readable})
+        return roots
+    return [{"name": "/", "path": "/", "readable": os.access("/", os.R_OK)}]
+
+
 @app.get("/api/browse")
 def browse(path: str | None = None) -> dict:
-    """Lista podkatalogów dla wybranej ścieżki. Domyślnie HOME."""
+    """Lista podkatalogów. Domyślnie HOME. Sentinel '__roots__' = lista dysków."""
+    if path == "__roots__":
+        return {"path": "__roots__", "parent": None, "dirs": _list_roots(), "is_roots": True}
     p = Path(path).expanduser().resolve() if path else Path.home()
     if not p.exists() or not p.is_dir():
         raise HTTPException(400, f"Does not exist or is not a directory: {p}")
@@ -567,10 +587,13 @@ def browse(path: str | None = None) -> dict:
                 readable = os.access(entry, os.R_OK)
             except OSError:
                 readable = False
-            dirs.append({"name": entry.name, "readable": readable})
+            dirs.append({"name": entry.name, "path": str(entry), "readable": readable})
     except PermissionError:
         pass
-    parent = str(p.parent) if p != p.parent else None
+    if p == p.parent:
+        parent = "__roots__" if sys.platform == "win32" else None
+    else:
+        parent = str(p.parent)
     return {"path": str(p), "parent": parent, "dirs": dirs}
 
 
