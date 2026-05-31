@@ -22,7 +22,7 @@ both switchable from the top bar.
   `prompt`, A1111 `parameters`) and JPG EXIF `UserComment`. Extracts prompt,
   negative prompt, model, sampler, steps, CFG, seed and LoRAs.
 - **First-class companion plugin.** Pair with
-  [`comfyui-ai-gallery-saver`](https://github.com/quzopl/comfyui-ai-gallery-saver)
+  [`comfyui-save-image-rich-metadata`](https://github.com/quzopl/comfyui-save-image-rich-metadata)
   in ComfyUI to embed clean, authoritative metadata in every render — no
   guessing required.
 - **Full-text search.** SQLite FTS5 over prompts. Hit Enter, get results.
@@ -145,7 +145,7 @@ Tile size, last selected library, etc. are persisted in `localStorage`.
 For each scanned image the parser tries in priority order:
 
 1. **`ai_gallery_meta` tEXt chunk** — written by the
-   [companion plugin](https://github.com/quzopl/comfyui-ai-gallery-saver).
+   [companion plugin](https://github.com/quzopl/comfyui-save-image-rich-metadata).
    Authoritative, no heuristics needed.
 2. **ComfyUI `prompt` / `workflow` chunks** — the execution graph is parsed
    to extract prompt (first `CLIPTextEncode`), negative (keyword heuristic),
@@ -258,11 +258,11 @@ See `docs/superpowers/specs/` for the original design doc and
 
 ## Companion plugin
 
-[**comfyui-ai-gallery-saver**](https://github.com/quzopl/comfyui-ai-gallery-saver)
-is a tiny ComfyUI custom node that writes clean, authoritative metadata into
-every saved image. Highly recommended if you use ComfyUI — it eliminates the
-heuristic guesswork involved in tracing prompts and LoRAs out of arbitrary
-execution graphs.
+[**comfyui-save-image-rich-metadata**](https://github.com/quzopl/comfyui-save-image-rich-metadata)
+(node: **Save Image (Rich Metadata)**) is a tiny ComfyUI custom node that
+writes clean, authoritative metadata into every saved image. Highly
+recommended if you use ComfyUI — it eliminates the heuristic guesswork
+involved in tracing prompts and LoRAs out of arbitrary execution graphs.
 
 ## License
 
