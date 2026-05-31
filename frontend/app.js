@@ -56,8 +56,29 @@ function renderLibraries() {
     const count = document.createElement("span");
     count.className = "count";
     count.textContent = L.image_count;
-    li.append(name, count);
+    const del = document.createElement("button");
+    del.className = "lib-del";
+    del.textContent = "×";
+    del.title = "Remove library (files untouched)";
+    del.onclick = (e) => { e.stopPropagation(); deleteLibrary(L); };
+    li.append(name, count, del);
     ul.appendChild(li);
+  }
+}
+
+async function deleteLibrary(L) {
+  if (!confirm(`Remove library "${L.name}" from AI Gallery?\n\nFiles on disk will NOT be touched.`)) return;
+  try {
+    await api(`/api/libraries/${L.id}`, { method: "DELETE" });
+    if (state.activeLibraryId === L.id) {
+      state.activeLibraryId = null;
+      localStorage.setItem("activeLibraryId", "");
+    }
+    await refreshLibraries();
+    await loadImages();
+    toast(`Removed library "${L.name}"`);
+  } catch (err) {
+    toast("Error: " + err.message);
   }
 }
 
@@ -90,10 +111,12 @@ async function loadPickerPath(path) {
     const url = path ? `/api/browse?path=${encodeURIComponent(path)}` : "/api/browse";
     const r = await api(url);
     pickerCurrentPath = r.path;
-    pickerPathEl.textContent = r.path;
-    pickerPathEl.title = r.path;
+    const isRoots = r.is_roots === true;
+    pickerPathEl.textContent = isRoots ? "(Drives)" : r.path;
+    pickerPathEl.title = isRoots ? "Drives / filesystem roots" : r.path;
     document.getElementById("picker-up").disabled = !r.parent;
     document.getElementById("picker-up").dataset.parent = r.parent || "";
+    document.getElementById("picker-add").disabled = isRoots;
     pickerListEl.innerHTML = "";
     for (const d of r.dirs) {
       const li = document.createElement("li");
@@ -102,7 +125,7 @@ async function loadPickerPath(path) {
         li.classList.add("unreadable");
         li.title = "no read permission";
       } else {
-        li.onclick = () => loadPickerPath(`${r.path}/${d.name}`.replace(/\/+/g, "/"));
+        li.onclick = () => loadPickerPath(d.path);
       }
       pickerListEl.appendChild(li);
     }
@@ -123,10 +146,11 @@ document.getElementById("picker-up").onclick = (e) => {
   const parent = e.currentTarget.dataset.parent;
   if (parent) loadPickerPath(parent);
 };
+document.getElementById("picker-drives").onclick = () => loadPickerPath("__roots__");
 document.getElementById("picker-close").onclick = closePicker;
 document.getElementById("picker-cancel").onclick = closePicker;
 document.getElementById("picker-add").onclick = async () => {
-  if (!pickerCurrentPath) return;
+  if (!pickerCurrentPath || pickerCurrentPath === "__roots__") return;
   const name = pickerNameEl.value.trim() || null;
   try {
     await api("/api/libraries", {
