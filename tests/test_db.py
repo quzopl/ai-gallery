@@ -150,6 +150,40 @@ def test_lora_junction_rebuilds_on_upsert(tmpdb: Path) -> None:
         db.stop_writer(writer)
 
 
+def test_upsert_with_duplicate_lora(tmpdb: Path) -> None:
+    """Ta sama LoRA podana dwa razy (np. model+clip) nie może wywalić upsertu.
+
+    Regresja: metadane z ComfyUI potrafią zawierać tę samą LoRA dwukrotnie;
+    wcześniej drugi INSERT do image_loras łamał PRIMARY KEY → IntegrityError
+    → cała transakcja cofnięta → obraz nie trafiał do bazy (cicho połknięty
+    przez skaner/watchdog).
+    """
+    db.init_schema(tmpdb)
+    writer = db.start_writer(tmpdb)
+    try:
+        lib_id = db.add_library(writer, path="/tmp/dup", name="DUP")
+        img_id = db.upsert_image(
+            writer, library_id=lib_id, rel_path="a.png", sha1="s",
+            mtime=1, size_bytes=1, width=1, height=1,
+            source_kind="comfyui", prompt="x", negative=None,
+            model_name=None, sampler=None, steps=None, cfg=None, seed=None,
+            raw_metadata=None,
+            loras=[("ideogram/bart1.safetensors", 1.0),
+                   ("ideogram/bart1.safetensors", 1.0)],
+        )
+        con = db.readonly(tmpdb)
+        row = con.execute("SELECT id FROM images WHERE id=?", (img_id,)).fetchone()
+        names = [r[0] for r in con.execute(
+            "SELECT lo.name FROM image_loras il JOIN loras lo ON lo.id=il.lora_id "
+            "WHERE il.image_id=?", (img_id,))]
+        con.close()
+        assert row is not None, "obraz musi się zapisać mimo zduplikowanej LoRA"
+        assert names == ["ideogram/bart1.safetensors"], \
+            f"duplikat powinien zostać zdeduplikowany, otrzymano {names}"
+    finally:
+        db.stop_writer(writer)
+
+
 def test_log_file_op_persists(tmpdb: Path) -> None:
     db.init_schema(tmpdb)
     writer = db.start_writer(tmpdb)
