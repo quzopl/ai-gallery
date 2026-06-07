@@ -251,7 +251,7 @@ def _upsert_image(
         con.execute("INSERT OR IGNORE INTO loras (name) VALUES (?)", (lora_name,))
         lora_id = con.execute("SELECT id FROM loras WHERE name=?", (lora_name,)).fetchone()[0]
         con.execute(
-            "INSERT INTO image_loras (image_id, lora_id, strength) VALUES (?, ?, ?)",
+            "INSERT OR IGNORE INTO image_loras (image_id, lora_id, strength) VALUES (?, ?, ?)",
             (img_id, lora_id, strength),
         )
     return img_id
