@@ -308,6 +308,19 @@ async function openDetail(id) {
   }
   add("Prompt", d.prompt);
   add("Negative", d.negative);
+  if (d.prompt_json) {
+    const dt = document.createElement("dt"); dt.textContent = "JSON";
+    const dd = document.createElement("dd");
+    const det = document.createElement("details");
+    det.className = "json-details";
+    const sum = document.createElement("summary"); sum.textContent = "structured JSON";
+    const pre = document.createElement("pre");
+    pre.className = "json-block";
+    pre.textContent = d.prompt_json;
+    det.append(sum, pre);
+    dd.appendChild(det);
+    dl.append(dt, dd);
+  }
   detailMeta.appendChild(dl);
   detailEl.dataset.imageId = id;
   detailEl.dataset.isFavorite = d.is_favorite ? "1" : "0";

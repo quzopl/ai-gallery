@@ -22,6 +22,7 @@ _LORA_RE = re.compile(r'<lora:([^:>]+):([\d.]+)>', re.IGNORECASE)
 EMPTY: dict[str, Any] = {
     "source_kind": None,
     "prompt": None,
+    "prompt_json": None,
     "negative": None,
     "model_name": None,
     "sampler": None,
@@ -56,9 +57,10 @@ def extract(path: Path) -> dict[str, Any]:
     except Exception:  # noqa: BLE001
         # corrupt/unreadable — zwracamy co mamy (puste pola)
         pass
-    # Structured JSON caption (Ideogram-4 style) → readable prompt, regardless
-    # of which module/source produced it.
-    out["prompt"] = _flatten_caption(out["prompt"])
+    # Structured JSON caption (Ideogram-4 style): keep the original JSON in
+    # prompt_json AND expose a readable, FTS-searchable prompt — regardless of
+    # which module/source produced it.
+    out["prompt_json"], out["prompt"] = _split_caption(out["prompt"])
     return out
 
 
@@ -404,14 +406,23 @@ def _load_json_object(s: str) -> dict | None:
     return None
 
 
-def _flatten_caption(prompt: str | None) -> str | None:
-    """Turn a structured caption JSON into a readable, searchable prompt.
-    Non-caption prompts pass through unchanged."""
+def _split_caption(prompt: str | None) -> tuple[str | None, str | None]:
+    """Split a prompt into (structured_json, readable_text).
+
+    If `prompt` is a structured caption JSON, returns its pretty-printed form
+    and a readable flattening. Otherwise returns (None, prompt) unchanged."""
     if not isinstance(prompt, str) or not _looks_like_caption(prompt):
-        return prompt
+        return None, prompt
     obj = _load_json_object(prompt)
     if not isinstance(obj, dict):
-        return prompt
+        return None, prompt
+    pretty = json.dumps(obj, ensure_ascii=False, indent=2)
+    flat = _flatten_obj(obj)
+    return pretty, (flat or prompt)
+
+
+def _flatten_obj(obj: dict) -> str | None:
+    """Readable, FTS-friendly text from a parsed caption object."""
     parts: list[str] = []
     hld = obj.get("high_level_description")
     if isinstance(hld, str) and hld.strip():
@@ -436,7 +447,7 @@ def _flatten_caption(prompt: str | None) -> str | None:
             v = sd.get(k)
             if isinstance(v, str) and v.strip():
                 parts.append(v.strip())
-    return "\n".join(parts) if parts else prompt
+    return "\n".join(parts) if parts else None
 
 
 # ---------- helpery typów ----------

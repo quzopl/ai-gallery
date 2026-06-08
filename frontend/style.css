@@ -670,3 +670,25 @@ button.danger:hover { background: var(--danger-soft); border-color: var(--danger
 }
 
 .hidden { display: none !important; }
+
+/* structured JSON caption in the detail panel */
+.json-details { margin-top: 2px; }
+.json-details summary {
+  cursor: pointer;
+  color: var(--accent);
+  font: 12px/1.4 var(--font-mono, monospace);
+  user-select: none;
+}
+.json-block {
+  margin: 8px 0 0;
+  padding: 10px 12px;
+  background: var(--bg-2);
+  border: 1px solid var(--border, rgba(255,255,255,.08));
+  border-radius: var(--r-sm);
+  font: 11px/1.5 var(--font-mono, monospace);
+  white-space: pre-wrap;
+  word-break: break-word;
+  max-height: 360px;
+  overflow: auto;
+  color: var(--fg);
+}

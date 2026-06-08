@@ -62,6 +62,7 @@ def _full_parse_and_upsert(
         height=md["height"],
         source_kind=md["source_kind"],
         prompt=md["prompt"],
+        prompt_json=md["prompt_json"],
         negative=md["negative"],
         model_name=md["model_name"],
         sampler=md["sampler"],

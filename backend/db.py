@@ -36,6 +36,7 @@ CREATE TABLE IF NOT EXISTS images (
     height        INTEGER,
     source_kind   TEXT,
     prompt        TEXT,
+    prompt_json   TEXT,
     negative      TEXT,
     model_name    TEXT,
     sampler       TEXT,
@@ -106,6 +107,11 @@ def init_schema(db_path: Path) -> None:
     # migracja: is_favorite (dodane po MVP)
     try:
         con.execute("ALTER TABLE images ADD COLUMN is_favorite INTEGER NOT NULL DEFAULT 0")
+    except sqlite3.OperationalError:
+        pass  # już istnieje
+    # migracja: prompt_json (oryginalny strukturalny JSON-caption obok prompt)
+    try:
+        con.execute("ALTER TABLE images ADD COLUMN prompt_json TEXT")
     except sqlite3.OperationalError:
         pass  # już istnieje
     con.execute(
@@ -211,6 +217,7 @@ def _upsert_image(
     height: int | None,
     source_kind: str | None,
     prompt: str | None,
+    prompt_json: str | None = None,
     negative: str | None,
     model_name: str | None,
     sampler: str | None,
@@ -226,19 +233,20 @@ def _upsert_image(
         """
         INSERT INTO images (
             library_id, rel_path, sha1, mtime, size_bytes,
-            width, height, source_kind, prompt, negative,
+            width, height, source_kind, prompt, prompt_json, negative,
             model_name, sampler, steps, cfg, seed, raw_metadata, indexed_at
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         ON CONFLICT(library_id, rel_path) DO UPDATE SET
             sha1=excluded.sha1, mtime=excluded.mtime, size_bytes=excluded.size_bytes,
             width=excluded.width, height=excluded.height,
-            source_kind=excluded.source_kind, prompt=excluded.prompt, negative=excluded.negative,
+            source_kind=excluded.source_kind, prompt=excluded.prompt,
+            prompt_json=excluded.prompt_json, negative=excluded.negative,
             model_name=excluded.model_name, sampler=excluded.sampler, steps=excluded.steps,
             cfg=excluded.cfg, seed=excluded.seed, raw_metadata=excluded.raw_metadata,
             indexed_at=excluded.indexed_at
         """,
         (library_id, rel_path, sha1, mtime, size_bytes,
-         width, height, source_kind, prompt, negative,
+         width, height, source_kind, prompt, prompt_json, negative,
          model_name, sampler, steps, cfg, seed, raw_metadata, now),
     )
     img_id = con.execute(
