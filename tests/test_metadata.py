@@ -102,6 +102,53 @@ def test_extract_a1111_jpg_exif(tmp_path: Path) -> None:
     assert m["sampler"] == "Euler"
 
 
+_CAPTION = {
+    "high_level_description": "A portrait of quz0 in a modern city",
+    "style_description": {"aesthetics": "cinematic moody", "lighting": "soft ambient"},
+    "compositional_deconstruction": {
+        "background": "urban bokeh background",
+        "elements": [{"type": "obj", "desc": "quz0 athletic man with chest hair"}],
+    },
+}
+
+
+def test_comfy_json_caption_routed_through_switch(tmp_path: Path) -> None:
+    """Prompt JSON lives in a PrimitiveString routed via ComfySwitchNode into
+    CLIPTextEncode (text is a link, not a literal) — as saved by stock SaveImage."""
+    prompt = {
+        "1": {"class_type": "SamplerCustomAdvanced", "inputs": {"guider": ["2", 0]}},
+        "2": {"class_type": "DualModelGuider",
+              "inputs": {"positive": ["3", 0], "negative": ["6", 0], "cfg": 6.0}},
+        "3": {"class_type": "CLIPTextEncode", "inputs": {"text": ["4", 0]}},
+        "4": {"class_type": "ComfySwitchNode",
+              "inputs": {"switch": False, "on_false": ["5", 0], "on_true": ["3", 0]}},
+        "5": {"class_type": "PrimitiveStringMultiline",
+              "inputs": {"value": json.dumps(_CAPTION)}},
+        "6": {"class_type": "ConditioningZeroOut", "inputs": {"conditioning": ["3", 0]}},
+    }
+    p = tmp_path / "cjson.png"
+    _make_png(p, {"prompt": json.dumps(prompt)})
+    m = metadata.extract(p)
+    assert m["source_kind"] == "comfyui"
+    assert "quz0" in (m["prompt"] or "")
+    assert "urban bokeh background" in (m["prompt"] or "")
+    assert "quz0 athletic man with chest hair" in (m["prompt"] or "")
+    assert m["negative"] is None  # zeroed branch must not echo positive
+    assert "{" not in (m["prompt"] or "")  # flattened, not raw JSON
+
+
+def test_ai_gallery_json_caption_flattened(tmp_path: Path) -> None:
+    meta = {"version": 1, "source": "other-module",
+            "prompt": json.dumps(_CAPTION), "model_name": "some.safetensors"}
+    p = tmp_path / "agjson.png"
+    _make_png(p, {"ai_gallery_meta": json.dumps(meta)})
+    m = metadata.extract(p)
+    assert m["source_kind"] == "ai_gallery"
+    assert "quz0" in (m["prompt"] or "")
+    assert "soft ambient" in (m["prompt"] or "")  # style fields surfaced
+    assert "{" not in (m["prompt"] or "")
+
+
 def test_lora_extraction_from_a1111_prompt(tmp_path: Path) -> None:
     params = (
         "a portrait <lora:char_ohwx:0.8> <lora:style_anime:0.5>\n"
