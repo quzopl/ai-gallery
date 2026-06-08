@@ -135,6 +135,9 @@ def test_comfy_json_caption_routed_through_switch(tmp_path: Path) -> None:
     assert "quz0 athletic man with chest hair" in (m["prompt"] or "")
     assert m["negative"] is None  # zeroed branch must not echo positive
     assert "{" not in (m["prompt"] or "")  # flattened, not raw JSON
+    # original structured JSON preserved alongside the readable prompt
+    assert m["prompt_json"] is not None
+    assert json.loads(m["prompt_json"])["high_level_description"].startswith("A portrait of quz0")
 
 
 def test_ai_gallery_json_caption_flattened(tmp_path: Path) -> None:
@@ -147,6 +150,17 @@ def test_ai_gallery_json_caption_flattened(tmp_path: Path) -> None:
     assert "quz0" in (m["prompt"] or "")
     assert "soft ambient" in (m["prompt"] or "")  # style fields surfaced
     assert "{" not in (m["prompt"] or "")
+    assert m["prompt_json"] is not None and '"high_level_description"' in m["prompt_json"]
+
+
+def test_plain_prompt_has_no_prompt_json(tmp_path: Path) -> None:
+    params = ("just a plain prompt, nothing structured\n"
+              "Steps: 20, Sampler: Euler, CFG scale: 7, Seed: 1, Size: 512x512, Model: x")
+    p = tmp_path / "plain_a1111.png"
+    _make_png(p, {"parameters": params})
+    m = metadata.extract(p)
+    assert m["prompt_json"] is None
+    assert "plain prompt" in (m["prompt"] or "")
 
 
 def test_lora_extraction_from_a1111_prompt(tmp_path: Path) -> None:
