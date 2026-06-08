@@ -322,6 +322,7 @@ async function openDetail(id) {
     dl.append(dt, dd);
   }
   detailMeta.appendChild(dl);
+  document.getElementById("btn-copy-json").classList.toggle("hidden", !d.prompt_json);
   detailEl.dataset.imageId = id;
   detailEl.dataset.isFavorite = d.is_favorite ? "1" : "0";
   updateFavoriteButton(!!d.is_favorite);
@@ -429,6 +430,14 @@ document.getElementById("btn-copy-prompt").onclick = async () => {
   const d = await api(`/api/images/${id}`);
   await navigator.clipboard.writeText(d.prompt || "");
   toast("Prompt copied");
+};
+
+document.getElementById("btn-copy-json").onclick = async () => {
+  const id = Number(detailEl.dataset.imageId);
+  const d = await api(`/api/images/${id}`);
+  if (!d.prompt_json) { toast("No JSON for this image"); return; }
+  await navigator.clipboard.writeText(d.prompt_json);
+  toast("JSON copied");
 };
 
 // ---------- facets + search ----------
