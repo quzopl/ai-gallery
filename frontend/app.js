@@ -274,6 +274,35 @@ function selectImage(id) {
   openDetail(id);
 }
 
+// ---------- grid keyboard navigation helpers ----------
+function gridColumnCount() {
+  const cols = getComputedStyle(galleryEl).gridTemplateColumns;
+  return Math.max(1, cols.split(" ").filter(Boolean).length);
+}
+
+function gridPageStep() {
+  const firstTile = galleryEl.querySelector(".tile");
+  const gap = parseFloat(getComputedStyle(galleryEl).rowGap) || 0;
+  const rowH = firstTile ? firstTile.offsetHeight + gap : 200;
+  const rows = Math.max(1, Math.floor(galleryEl.clientHeight / rowH));
+  return rows * gridColumnCount();
+}
+
+function selectByIndex(idx) {
+  if (!state.images.length) return;
+  const clamped = Math.max(0, Math.min(state.images.length - 1, idx));
+  const img = state.images[clamped];
+  if (!img) return;
+  selectImage(img.id);
+  const tile = galleryEl.querySelector(`.tile[data-id="${img.id}"]`);
+  if (tile) tile.scrollIntoView({ block: "nearest" });
+}
+
+function currentIndex() {
+  if (state.selectedId == null) return -1;
+  return state.images.findIndex(x => x.id === state.selectedId);
+}
+
 // ---------- detail panel + lightbox ----------
 const detailEl = document.getElementById("detail");
 const detailImg = document.getElementById("detail-img");
@@ -673,10 +702,26 @@ document.addEventListener("keydown", (e) => {
   }
   if (e.key === "ArrowLeft" || e.key === "ArrowRight") {
     if (state.selectedId == null) return;
-    const idx = state.images.findIndex(x => x.id === state.selectedId);
-    const nextIdx = e.key === "ArrowLeft" ? idx - 1 : idx + 1;
-    const next = state.images[nextIdx];
-    if (next) selectImage(next.id);
+    selectByIndex(currentIndex() + (e.key === "ArrowLeft" ? -1 : 1));
+    return;
+  }
+  if (e.key === "ArrowUp" || e.key === "ArrowDown") {
+    if (state.selectedId == null) return;
+    e.preventDefault();
+    const step = gridColumnCount();
+    selectByIndex(currentIndex() + (e.key === "ArrowUp" ? -step : step));
+    return;
+  }
+  if (e.key === "PageUp" || e.key === "PageDown") {
+    e.preventDefault();
+    const step = gridPageStep();
+    const base = currentIndex() < 0 ? 0 : currentIndex();
+    selectByIndex(base + (e.key === "PageUp" ? -step : step));
+    return;
+  }
+  if (e.key === "Home" || e.key === "End") {
+    e.preventDefault();
+    selectByIndex(e.key === "Home" ? 0 : state.images.length - 1);
     return;
   }
   if (e.key === "Delete" && state.selectedId != null) {
