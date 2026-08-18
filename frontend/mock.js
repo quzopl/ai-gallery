@@ -275,6 +275,7 @@
 
     // browse
     if (path === "/api/browse") return ok(browse(u.searchParams.get("path")));
+    if (path === "/api/browse/mkdir" && method === "POST") return ok({ path: `${body.parent}/${body.name}` });
 
     // images list
     if (path === "/api/images" && method === "GET") {

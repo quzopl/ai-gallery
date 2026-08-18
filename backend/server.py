@@ -627,4 +627,28 @@ def browse(path: str | None = None) -> dict:
     return {"path": str(p), "parent": parent, "dirs": dirs}
 
 
+class MkdirRequest(BaseModel):
+    parent: str
+    name: str
+
+
+@app.post("/api/browse/mkdir")
+def browse_mkdir(req: MkdirRequest) -> dict:
+    """Utwórz nowy podfolder w istniejącym katalogu (dla pickera)."""
+    name = req.name.strip()
+    if not name or name in (".", "..") or "/" in name or "\\" in name:
+        raise HTTPException(400, "name: empty or contains path separators")
+    parent = Path(req.parent).expanduser()
+    if not parent.is_dir():
+        raise HTTPException(400, f"Parent does not exist or is not a directory: {parent}")
+    target = parent / name
+    if target.exists():
+        raise HTTPException(400, f"Already exists: {target}")
+    try:
+        target.mkdir()
+    except OSError as exc:
+        raise HTTPException(500, str(exc))
+    return {"path": str(target.resolve())}
+
+
 app.mount("/", StaticFiles(directory=FRONTEND, html=True), name="frontend")
