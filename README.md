@@ -37,7 +37,8 @@ both switchable from the top bar.
   deleted files within ~500 ms and pushes updates over WebSocket. New images
   appear without a manual refresh.
 - **Safe file operations.** Delete (to XDG Trash, restorable from Plasma's
-  Trash), rename (in-place, validated), move. Every write is audit-logged.
+  Trash), rename (in-place, validated), move, export (copy to any folder).
+  Every write is audit-logged.
 - **Virtual grid.** Lazy-loaded thumbnails with `IntersectionObserver`.
   Cursor-based pagination handles tens of thousands of images.
 - **Cached thumbnails.** WebP, generated on first request, keyed by SHA1.
@@ -124,6 +125,10 @@ Buttons:
 - **📋 Copy prompt** — to clipboard
 - **🗑 Move to trash** — to XDG Trash (restorable from your file manager)
 - **✎ Rename** — in-place, validated
+- **📤 Export** — copy the file to a folder of your choice (server-side
+  folder picker, optional new subfolder). The original stays where it is;
+  on a name clash the copy gets a `.1`, `.2`… suffix. The last export
+  folder is remembered.
 
 Click the image to open the full-screen lightbox; click anywhere to close it.
 
@@ -136,6 +141,7 @@ Click the image to open the full-screen lightbox; click anywhere to close it.
 | `←` `→` | Previous / next image |
 | `Del` | Move selected image to trash (with confirm) |
 | `Ctrl+C` | Copy prompt of selected image |
+| `Ctrl+E` | Export selected image to a folder |
 | `Ctrl+-` / `Ctrl+=` | Smaller / larger tiles |
 
 Tile size, last selected library, etc. are persisted in `localStorage`.
@@ -189,6 +195,9 @@ ComfyUI graph.
   name is validated against path separators and `..` segments.
 - **Move** uses `shutil.move` and validates that the destination is within
   one of your tracked libraries.
+- **Export** uses `shutil.copy2` (keeps mtime) into any directory the server
+  can write to; the directory is created if needed and name clashes get a
+  numeric suffix. The library and the database are not touched.
 - Every successful or failed operation is recorded in the `file_ops` table.
   Endpoint `GET /api/audit` returns the last N entries.
 
@@ -233,6 +242,7 @@ Schema (SQLite with WAL):
 | `DELETE` | `/api/images/{id}` | Move to XDG Trash |
 | `POST` | `/api/images/{id}/rename` | `{new_name}` |
 | `POST` | `/api/images/{id}/move` | `{to_library_id, to_rel_path}` |
+| `POST` | `/api/images/{id}/export` | `{to_dir}` — copy the file into a folder (created if missing); returns `{path}` |
 | `POST` | `/api/images/{id}/favorite` | `{value: bool}` |
 | `POST` | `/api/images/{id}/tags` | `{tags: [str]}` — replaces all tags |
 | `GET` | `/api/tags` | All tags with counts |

@@ -83,6 +83,7 @@
         <button id="btn-copy-json" class="hidden">📋 Copy JSON</button>
         <button id="btn-delete" class="danger">🗑 Move to trash</button>
         <button id="btn-rename">✎ Rename</button>
+        <button id="btn-export" title="Copy this image to a chosen folder (Ctrl+E)">📤 Export</button>
       </div>
     </aside>
   </main>
@@ -101,7 +102,7 @@
       </header>
       <ul id="picker-list" class="picker-list"></ul>
       <footer class="picker-foot">
-        <label>Library name
+        <label><span id="picker-name-label">Library name</span>
           <input id="picker-name" type="text" placeholder="(folder name)">
         </label>
         <div class="picker-actions">

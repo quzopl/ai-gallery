@@ -302,6 +302,11 @@
       if (im) im.rel_path = im.rel_path.split("/").slice(0, -1).concat(body.new_name).join("/");
       return ok({ ok: true });
     }
+    if ((m = path.match(/^\/api\/images\/(\d+)\/export$/)) && method === "POST") {
+      const im = IMAGES.find(x => x.id === +m[1]);
+      const name = (im?.rel_path || "image.png").split("/").pop();
+      return ok({ status: "exported", path: `${body.to_dir}/${name}` });
+    }
     // thumb / file are loaded as <img src> (handled by __mockImg), not fetch
     return notFound();
   };
