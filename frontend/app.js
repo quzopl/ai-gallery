@@ -95,11 +95,25 @@ const pickerPathEl = document.getElementById("picker-path");
 const pickerListEl = document.getElementById("picker-list");
 const pickerNameEl = document.getElementById("picker-name");
 let pickerCurrentPath = null;
+let pickerMode = "library";           // "library" | "export"
+let pickerExportId = null;            // image id being exported
+const EXPORT_DIR_KEY = "ai-gallery.exportDir";
 
-async function openPicker(startPath = null) {
+const PICKER_MODES = {
+  library: { label: "Library name", placeholder: "(folder name)", button: "+ Add this folder" },
+  export:  { label: "New subfolder (optional)", placeholder: "(leave empty to export here)", button: "📤 Export here" },
+};
+
+async function openPicker(startPath = null, mode = "library") {
+  pickerMode = mode;
+  const cfg = PICKER_MODES[mode];
+  document.getElementById("picker-name-label").textContent = cfg.label;
+  pickerNameEl.placeholder = cfg.placeholder;
+  document.getElementById("picker-add").textContent = cfg.button;
   pickerEl.classList.remove("hidden");
   pickerNameEl.value = "";
-  await loadPickerPath(startPath);
+  const ok = await loadPickerPath(startPath);
+  if (!ok && startPath) await loadPickerPath(null);   // remembered folder vanished → home
 }
 
 function closePicker() {
@@ -137,8 +151,10 @@ async function loadPickerPath(path) {
       li.style.pointerEvents = "none";
       pickerListEl.appendChild(li);
     }
+    return true;
   } catch (err) {
     toast("Error: " + err.message);
+    return false;
   }
 }
 
@@ -152,6 +168,7 @@ document.getElementById("picker-cancel").onclick = closePicker;
 document.getElementById("picker-add").onclick = async () => {
   if (!pickerCurrentPath || pickerCurrentPath === "__roots__") return;
   const name = pickerNameEl.value.trim() || null;
+  if (pickerMode === "export") { await exportToPicked(name); return; }
   try {
     await api("/api/libraries", {
       method: "POST",
@@ -166,6 +183,36 @@ document.getElementById("picker-add").onclick = async () => {
 };
 
 document.getElementById("btn-add-library").onclick = () => openPicker();
+
+// ---------- export image to folder ----------
+async function exportToPicked(subdir) {
+  if (subdir && (/[\\/]/.test(subdir) || subdir === "." || subdir === "..")) {
+    toast("Subfolder name: no path separators");
+    return;
+  }
+  const sep = pickerCurrentPath.includes("\\") ? "\\" : "/";
+  const toDir = subdir ? pickerCurrentPath.replace(/[\\/]+$/, "") + sep + subdir : pickerCurrentPath;
+  const id = pickerExportId;
+  if (!id) return;
+  try {
+    const r = await api(`/api/images/${id}/export`, {
+      method: "POST",
+      body: JSON.stringify({ to_dir: toDir }),
+    });
+    localStorage.setItem(EXPORT_DIR_KEY, toDir);
+    closePicker();
+    toast(`Exported → ${r.path}`);
+  } catch (err) {
+    toast("Error: " + err.message);
+  }
+}
+
+document.getElementById("btn-export").onclick = () => {
+  const id = Number(detailEl.dataset.imageId);
+  if (!id) return;
+  pickerExportId = id;
+  openPicker(localStorage.getItem(EXPORT_DIR_KEY) || null, "export");
+};
 
 document.getElementById("btn-rescan").onclick = async (e) => {
   if (state.activeLibraryId == null) {
@@ -732,6 +779,11 @@ document.addEventListener("keydown", (e) => {
   }
   if ((e.ctrlKey || e.metaKey) && e.key === "c" && state.selectedId != null) {
     document.getElementById("btn-copy-prompt").click();
+    return;
+  }
+  if ((e.ctrlKey || e.metaKey) && e.key === "e" && state.selectedId != null) {
+    e.preventDefault();
+    document.getElementById("btn-export").click();
     return;
   }
   if ((e.ctrlKey || e.metaKey) && (e.key === "-" || e.key === "=")) {

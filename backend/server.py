@@ -373,6 +373,10 @@ class RenameRequest(BaseModel):
     new_name: str
 
 
+class ExportRequest(BaseModel):
+    to_dir: str
+
+
 class MoveRequest(BaseModel):
     to_library_id: int
     to_rel_path: str
@@ -528,6 +532,30 @@ def move_image(image_id: int, req: MoveRequest) -> dict:
                        from_path=str(src), to_path=str(dst) if dst else None,
                        success=success, error=error)
     return {"status": "moved"}
+
+
+@app.post("/api/images/{image_id}/export")
+def export_image(image_id: int, req: ExportRequest) -> dict:
+    """Skopiuj plik obrazu do wybranego folderu (bez zmian w bibliotece/DB)."""
+    src, lib_id, _ = _image_source_path(image_id)
+    to_dir = (req.to_dir or "").strip()
+    if not to_dir:
+        raise HTTPException(400, "to_dir: empty")
+    error: str | None = None; success = False; dst: Path | None = None
+    try:
+        dst = fileops.export_copy(src, dst_dir=Path(to_dir))
+        success = True
+    except (ValueError, NotADirectoryError, FileNotFoundError) as exc:
+        error = str(exc)
+        raise HTTPException(400, error)
+    except Exception as exc:  # noqa: BLE001
+        error = str(exc)
+        raise HTTPException(500, error)
+    finally:
+        db.log_file_op(state.writer, op="export", library_id=lib_id,
+                       from_path=str(src), to_path=str(dst) if dst else None,
+                       success=success, error=error)
+    return {"status": "exported", "path": str(dst)}
 
 
 @app.get("/api/audit")

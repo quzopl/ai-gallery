@@ -76,3 +76,29 @@ def test_move_rejects_outside_target_library(tmp_path: Path) -> None:
     src = src_lib / "a.png"; src.write_bytes(b"x")
     with pytest.raises(ValueError, match="outside"):
         fileops.move(src, dst_library_root=dst_lib, dst_rel_path="../outside.png")
+
+
+def test_export_copy_keeps_source_and_creates_dir(tmp_path: Path) -> None:
+    src = tmp_path / "a.png"; src.write_bytes(b"data")
+    dst_dir = tmp_path / "out" / "nested"
+    dst = fileops.export_copy(src, dst_dir=dst_dir)
+    assert dst == dst_dir / "a.png"
+    assert dst.read_bytes() == b"data"
+    assert src.exists()
+
+
+def test_export_copy_unique_name_on_collision(tmp_path: Path) -> None:
+    src = tmp_path / "a.png"; src.write_bytes(b"new")
+    dst_dir = tmp_path / "out"; dst_dir.mkdir()
+    (dst_dir / "a.png").write_bytes(b"old")
+    dst = fileops.export_copy(src, dst_dir=dst_dir)
+    assert dst == dst_dir / "a.1.png"
+    assert (dst_dir / "a.png").read_bytes() == b"old"
+    assert dst.read_bytes() == b"new"
+
+
+def test_export_copy_rejects_file_as_dir(tmp_path: Path) -> None:
+    src = tmp_path / "a.png"; src.write_bytes(b"x")
+    notdir = tmp_path / "file.txt"; notdir.write_text("t")
+    with pytest.raises(NotADirectoryError):
+        fileops.export_copy(src, dst_dir=notdir)

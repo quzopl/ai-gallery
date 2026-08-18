@@ -190,3 +190,46 @@ def test_websocket_receives_scan_done(app_with_tmpdb) -> None:
             if msg.get("type") == "scan_done":
                 seen_done = True
         assert seen_done
+
+
+def _wait_first_image(client) -> int:
+    import time
+    deadline = time.time() + 5
+    while time.time() < deadline:
+        items = client.get("/api/images").json()["items"]
+        if items:
+            return items[0]["id"]
+        time.sleep(0.2)
+    raise AssertionError("no image indexed")
+
+
+def test_export_image_copies_to_folder(app_with_tmpdb) -> None:
+    client, tmp_path = app_with_tmpdb
+    lib_path = tmp_path / "photos"; lib_path.mkdir()
+    _make_comfy_png(lib_path / "pic.png")
+    client.post("/api/libraries", json={"path": str(lib_path)})
+    img_id = _wait_first_image(client)
+    out = tmp_path / "export" / "sub"
+    r = client.post(f"/api/images/{img_id}/export", json={"to_dir": str(out)})
+    assert r.status_code == 200, r.text
+    assert r.json()["status"] == "exported"
+    assert Path(r.json()["path"]) == out / "pic.png"
+    assert (out / "pic.png").exists()
+    assert (lib_path / "pic.png").exists()
+    audit = client.get("/api/audit").json()
+    assert audit[0]["op"] == "export" and audit[0]["success"]
+
+
+def test_export_image_rejects_bad_target(app_with_tmpdb) -> None:
+    client, tmp_path = app_with_tmpdb
+    lib_path = tmp_path / "photos"; lib_path.mkdir()
+    _make_comfy_png(lib_path / "pic.png")
+    client.post("/api/libraries", json={"path": str(lib_path)})
+    img_id = _wait_first_image(client)
+    r = client.post(f"/api/images/{img_id}/export", json={"to_dir": ""})
+    assert r.status_code == 400
+    notdir = tmp_path / "f.txt"; notdir.write_text("x")
+    r = client.post(f"/api/images/{img_id}/export", json={"to_dir": str(notdir)})
+    assert r.status_code == 400
+    r = client.post("/api/images/999999/export", json={"to_dir": str(tmp_path)})
+    assert r.status_code == 404

@@ -92,3 +92,20 @@ def move(path: Path, *, dst_library_root: Path, dst_rel_path: str) -> Path:
     dst.parent.mkdir(parents=True, exist_ok=True)
     shutil.move(str(path), str(dst))
     return dst
+
+
+def export_copy(path: Path, *, dst_dir: Path) -> Path:
+    """Skopiuj plik do wybranego folderu (oryginał zostaje nietknięty).
+
+    Folder docelowy jest tworzony w razie potrzeby; przy kolizji nazwy
+    dopisywany jest sufiks .1 .2 ... (jak w koszu). Zachowuje mtime (copy2).
+    """
+    if not path.is_file():
+        raise FileNotFoundError(path)
+    dst_dir = Path(dst_dir).expanduser()
+    if dst_dir.exists() and not dst_dir.is_dir():
+        raise NotADirectoryError(f"not a directory: {dst_dir}")
+    dst_dir.mkdir(parents=True, exist_ok=True)
+    dst = dst_dir / _unique_trash_name(dst_dir, path.name)
+    shutil.copy2(str(path), str(dst))
+    return dst
