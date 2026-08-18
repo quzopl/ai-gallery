@@ -142,9 +142,19 @@ def _parse_comfyui(text: dict[str, str], out: dict[str, Any]) -> None:
         n = _trace_text(prompt_json, neg) if neg is not None else None
         # Fallbacks for graphs without a traceable sampler→positive link.
         if not p:
-            p = _comfy_positive_prompt(prompt_json) or _scan_caption(prompt_json)
+            p = (_comfy_positive_prompt(prompt_json)
+                 or _scan_caption(prompt_json)
+                 or _scan_literal(prompt_json, negative=False))
+        if not n:
+            n = _comfy_negative_prompt(prompt_json)
+        if not n and pos is None and neg is None:  # no sampler links at all (video config nodes)
+            n = _scan_literal(prompt_json, negative=True)
+        # Same text feeding both inputs (e.g. one Flux encoder wired to
+        # positive+negative, or an unrelated fallback hit) is not a negative.
+        if n and p and n.strip() == p.strip():
+            n = None
         out["prompt"] = p
-        out["negative"] = n or _comfy_negative_prompt(prompt_json)
+        out["negative"] = n
         _comfy_sampler_fields(prompt_json, out)
         out["model_name"] = _comfy_model_name(prompt_json)
         out["loras"] = _comfy_loras(prompt_json)
@@ -172,60 +182,134 @@ def _comfy_sampler_conditioning(graph: dict[str, Any]) -> tuple[Any, Any]:
                 if guider:
                     gin = guider.get("inputs") or {}
                     pos, neg = gin.get("positive"), gin.get("negative")
+                    if pos is None:  # BasicGuider: single `conditioning` input
+                        pos = gin.get("conditioning")
             return pos, neg
     return None, None
+
+
+# Input keys that carry (or lead to) prompt text, in preference order. Both
+# literal strings and links are tried; the first key that yields text wins.
+_TEXT_KEYS = (
+    "text", "populated_text", "text_positive", "positive_prompt", "prompt",
+    "t5xxl", "clip_l", "value", "string", "wildcard_text", "source",
+    "conditioning", "positive", "negative", "text_g", "text_l",
+)
+# Cached display widgets of ShowText/showAnything-style nodes: hold the LAST
+# value the node displayed, i.e. the real output of an upstream generator.
+_CACHED_KEYS = ("text_0", "text_1", "text2", "text_2")
+# Concatenation nodes: (ordered part keys, delimiter key)
+_CONCAT_KEYS = (
+    (("text_a", "text_b", "text_c", "text_d"), "delimiter"),
+    (("string_a", "string_b"), "delimiter"),
+)
+_GENERATOR_CLASSES = ("TextGenerate", "Florence2Run", "LLM", "Ollama", "Joy",
+                      "Qwen2VL", "Qwen3VL", "Caption", "Describe", "VLM")
+_GENERATOR_INPUT_HINTS = ("max_length", "max_new_tokens", "max_tokens",
+                          "temperature", "sampling_mode")
+
+_MAX_TRACE_DEPTH = 24
+
+
+def _is_generator(ct: str, inp: dict[str, Any]) -> bool:
+    """Node whose text output is produced at run time (LLM/VLM) and thus not
+    stored in the graph. Tracing into its inputs would return instructions,
+    not the prompt, so it resolves to None."""
+    if any(h.lower() in ct.lower() for h in _GENERATOR_CLASSES):
+        return True
+    return any(k in inp or k.split(".")[0] in inp for k in _GENERATOR_INPUT_HINTS) and (
+        "prompt" in inp or "text" in inp)
 
 
 def _trace_text(graph: dict[str, Any], value: Any, depth: int = 0) -> str | None:
     """Walk a link to the text that ultimately feeds a conditioning input.
 
-    Handles literal strings, CLIPTextEncode `text`, string primitives (`value`),
-    boolean routers (ComfySwitchNode on_true/on_false), the Ideogram-4 builder,
-    and nested conditioning. ConditioningZeroOut → empty (zeroed branch)."""
-    if depth > 8:
+    Handles literal strings, CLIPTextEncode `text`, Flux dual encoders
+    (`t5xxl`/`clip_l`), string primitives (`value`/`string`/`prompt`),
+    pass-through nodes (PreviewAny `source`), boolean routers (ComfySwitchNode /
+    Crystools `switch`/`boolean` — literal or linked to a PrimitiveBoolean),
+    rgthree Any Switch (`any_NN`), Text/String Concatenate (joined with the
+    node's delimiter), ShowText-style cached widgets, the Ideogram-4 builder,
+    and nested conditioning. ConditioningZeroOut → empty (zeroed branch).
+    Nodes whose output isn't stored in the graph (LLM generators like
+    TextGenerate/Florence2Run) resolve to None, so a router falls back to its
+    other branch — usually the user's raw prompt."""
+    if depth > _MAX_TRACE_DEPTH:
         return None
     if isinstance(value, str):
-        return value
-    if not (isinstance(value, list) and len(value) == 2):
-        return None
-    node = graph.get(str(value[0]))
-    if not isinstance(node, dict):
+        return value if value.strip() else None
+    node = _resolve_link(graph, value)
+    if node is None:
         return None
     ct = node.get("class_type", "")
     if ct == "ConditioningZeroOut":
         return None
     inp = node.get("inputs") or {}
-    # boolean routers: follow the active branch (switch literal) or try both
+    if _is_generator(ct, inp):
+        # The generated text isn't in the graph, but a ShowText-style node
+        # displaying the same output keeps the last value in a cached widget.
+        return _cached_display(graph, value)
+    # conditioning pass-throughs with (positive, negative) in AND out
+    # (LTXVConditioning, WanImageToVideo, …): output slot picks the side
+    if "positive" in inp and "negative" in inp:
+        side = "negative" if value[1] == 1 else "positive"
+        return _trace_text(graph, inp[side], depth + 1)
+    # boolean routers: prefer the active branch (switch literal or linked
+    # PrimitiveBoolean), but fall back to the other one if it yields no text
     if "on_true" in inp or "on_false" in inp:
-        sw = inp.get("switch")
-        order = (("on_true",) if sw is True
-                 else ("on_false",) if sw is False
-                 else ("on_true", "on_false"))
+        sw = inp.get("switch", inp.get("boolean"))
+        if not isinstance(sw, bool):
+            sw_node = _resolve_link(graph, sw)
+            sw = (sw_node.get("inputs") or {}).get("value") if sw_node else None
+        order = ("on_false", "on_true") if sw is False else ("on_true", "on_false")
         for b in order:
             if b in inp:
                 t = _trace_text(graph, inp[b], depth + 1)
                 if t:
                     return t
         return None
-    if "text" in inp:
-        txt = inp["text"]
-        return txt if isinstance(txt, str) else _trace_text(graph, txt, depth + 1)
-    if "value" in inp:  # PrimitiveString / PrimitiveStringMultiline / literals
-        val = inp["value"]
-        if isinstance(val, str):
-            return val
-        t = _trace_text(graph, val, depth + 1)
-        if t:
-            return t
+    # concatenation nodes: join every part that resolves
+    for part_keys, delim_key in _CONCAT_KEYS:
+        if any(k in inp for k in part_keys):
+            parts = [_trace_text(graph, inp[k], depth + 1) for k in part_keys if k in inp]
+            parts = [s.strip() for s in parts if s and s.strip()]
+            if parts:
+                delim = inp.get(delim_key)
+                return (delim if isinstance(delim, str) else " ").join(parts)
+            return None
     if ct == "Ideogram4PromptBuilderKJ":
         hld = inp.get("high_level_description")
         if isinstance(hld, str) and hld.strip():
             return hld
-    for key in ("conditioning", "positive", "negative", "text_g", "text_l"):
-        if key in inp:
-            t = _trace_text(graph, inp[key], depth + 1)
+    # rgthree Any Switch: first connected any_NN that yields text
+    lower = {k.lower(): k for k in inp}
+    any_keys = sorted(k for k in lower if k.startswith("any_"))
+    for key in list(_TEXT_KEYS) + any_keys:
+        if key in lower:
+            t = _trace_text(graph, inp[lower[key]], depth + 1)
             if t:
                 return t
+    # cached display value (ShowText etc.) — the upstream link was a generator
+    for key in _CACHED_KEYS:
+        v = inp.get(key)
+        if isinstance(v, str) and v.strip():
+            return v
+    return None
+
+
+def _cached_display(graph: dict[str, Any], link: Any) -> str | None:
+    """Cached widget text of any node that consumes `link` (ShowText|pysssss
+    `text_0`, easy showAnything `text`, …)."""
+    for node in graph.values():
+        if not isinstance(node, dict):
+            continue
+        inp = node.get("inputs") or {}
+        if not any(v == link for v in inp.values()):
+            continue
+        for key in _CACHED_KEYS + ("text",):
+            v = inp.get(key)
+            if isinstance(v, str) and v.strip():
+                return v
     return None
 
 
@@ -237,6 +321,42 @@ def _scan_caption(graph: dict[str, Any]) -> str | None:
         for v in (node.get("inputs") or {}).values():
             if isinstance(v, str) and _looks_like_caption(v):
                 return v
+    return None
+
+
+# Literal keys used by the last-resort scan, most explicit first.
+_SCAN_POS_KEYS = ("positive_prompt", "text_positive", "positive", "populated_text",
+                  "prompt", "t5xxl", "text", "value", "string")
+_SCAN_NEG_KEYS = ("negative_prompt", "text_negative", "negative")
+# Placeholder values of metadata-saver nodes, never a real prompt.
+_JUNK = {"none", "unknown", "null", "n/a", "-", "empty"}
+
+
+def _scan_literal(graph: dict[str, Any], *, negative: bool) -> str | None:
+    """Last resort when no sampler→text link can be traced (e.g. video
+    samplers that take a config node): pick the best literal string in the
+    graph. Keys are tried in explicitness order; within a key the longest
+    plausible text wins. Instruction-like LLM system prompts and (for the
+    positive side) negative-looking texts are skipped."""
+    keys = _SCAN_NEG_KEYS if negative else _SCAN_POS_KEYS
+    for key in keys:
+        best: str | None = None
+        for node in graph.values():
+            if not isinstance(node, dict):
+                continue
+            ct = node.get("class_type", "")
+            inp = node.get("inputs") or {}
+            v = inp.get(key)
+            if not isinstance(v, str) or not v.strip():
+                continue
+            if _is_generator(ct, inp) or _looks_instruction(v) or v.strip().lower() in _JUNK:
+                continue
+            if not negative and _looks_negative(v):
+                continue
+            if best is None or len(v) > len(best):
+                best = v
+        if best:
+            return best
     return None
 
 
@@ -278,17 +398,58 @@ def _looks_negative(text: str) -> bool:
     return any(h in t for h in _NEG_HINTS)
 
 
+def _looks_instruction(text: str) -> bool:
+    """LLM system prompt rather than an image prompt."""
+    t = text.strip().lower()
+    return t.startswith("you are ") or "your task is" in t
+
+
+# Keys under which primitive/seed nodes keep their literal value.
+_SCALAR_KEYS = ("value", "seed", "noise_seed", "Number", "number", "int", "float", "String", "string")
+
+
+def _scalar(graph: dict[str, Any], v: Any, depth: int = 0) -> Any:
+    """Literal value of a sampler input; follows a link into a primitive node
+    (PrimitiveFloat `value`, Seed (rgthree) `seed`, Float `Number`, …)."""
+    if not isinstance(v, list):
+        return v
+    node = _resolve_link(graph, v)
+    if node is None or depth > 4:
+        return None
+    inp = node.get("inputs") or {}
+    for k in _SCALAR_KEYS:
+        if k in inp:
+            return _scalar(graph, inp[k], depth + 1)
+    return None
+
+
+def _fill(out: dict[str, Any], key: str, value: Any) -> None:
+    if out[key] is None and value is not None:
+        out[key] = value
+
+
 def _comfy_sampler_fields(graph: dict[str, Any], out: dict[str, Any]) -> None:
-    for node in graph.values():
-        if not isinstance(node, dict):
-            continue
+    """Sampler settings: first from sampler nodes, then from the helper nodes
+    of SamplerCustom* graphs (RandomNoise / BasicScheduler / *Guider)."""
+    nodes = [n for n in graph.values() if isinstance(n, dict)]
+
+    def take(node: dict) -> None:
+        inp = node.get("inputs") or {}
+        s = _scalar(graph, inp.get("sampler_name"))
+        _fill(out, "sampler", _str_or_none(s))
+        _fill(out, "steps", _int_or_none(_scalar(graph, inp.get("steps"))))
+        _fill(out, "cfg", _float_or_none(_scalar(graph, inp.get("cfg"))))
+        seed = inp.get("seed", inp.get("noise_seed"))
+        _fill(out, "seed", _int_or_none(_scalar(graph, seed)))
+
+    for node in nodes:
         ct = node.get("class_type", "")
         if "Sampler" in ct or ct.startswith("KSampler"):
-            inp = node.get("inputs") or {}
-            out["sampler"] = out["sampler"] or _str_or_none(inp.get("sampler_name"))
-            out["steps"] = out["steps"] or _int_or_none(inp.get("steps"))
-            out["cfg"] = out["cfg"] or _float_or_none(inp.get("cfg"))
-            out["seed"] = out["seed"] or _int_or_none(inp.get("seed") or inp.get("noise_seed"))
+            take(node)
+    for node in nodes:
+        ct = node.get("class_type", "")
+        if ct in ("RandomNoise", "BasicScheduler") or "Scheduler" in ct or "Guider" in ct:
+            take(node)
 
 
 def _comfy_model_name(graph: dict[str, Any]) -> str | None:
@@ -305,18 +466,57 @@ def _comfy_model_name(graph: dict[str, Any]) -> str | None:
     return None
 
 
+def _lora_name(v: Any) -> str | None:
+    """LoRA file name from a literal string or a {content: ...} widget dict.
+    Placeholders ('None', '') → None."""
+    if isinstance(v, dict):
+        v = v.get("content") or v.get("lora") or v.get("name")
+    if not isinstance(v, str) or not v.strip() or v.strip().lower() == "none":
+        return None
+    return v
+
+
 def _comfy_loras(graph: dict[str, Any]) -> list[tuple[str, float | None]]:
+    """LoRAs from every loader flavour: plain LoraLoader*, rgthree Power Lora
+    Loader (`lora_N` dicts with on/lora/strength), rgthree Lora Loader Stack
+    (`lora_NN` + `strength_NN`), CR LoRA Stack (`lora_name_N` + `switch_N` +
+    `model_weight_N`), LoraLoaderStackedAdvanced (`lora_name` dict + `lora_weight`)."""
     out: list[tuple[str, float | None]] = []
+    seen: set[str] = set()
+
+    def add(name: Any, strength: Any) -> None:
+        n = _lora_name(name)
+        if n and n not in seen:
+            seen.add(n)
+            out.append((n, _float_or_none(strength)))
+
     for node in graph.values():
         if not isinstance(node, dict):
             continue
         ct = node.get("class_type", "")
-        if "Lora" in ct or "LoRA" in ct:
-            inp = node.get("inputs") or {}
-            name = inp.get("lora_name") or inp.get("name")
-            strength = _float_or_none(inp.get("strength_model") or inp.get("strength"))
-            if isinstance(name, str):
-                out.append((name, strength))
+        if "lora" not in ct.lower():
+            continue
+        inp = node.get("inputs") or {}
+        # rgthree Power Lora Loader: lora_1..N = {"on", "lora", "strength"}
+        for k, v in inp.items():
+            if isinstance(v, dict) and "lora" in v:
+                if v.get("on", True):
+                    add(v.get("lora"), v.get("strength"))
+        # rgthree Lora Loader Stack: lora_01 + strength_01
+        for k, v in inp.items():
+            m = re.fullmatch(r"lora_(\d+)", k)
+            if m and isinstance(v, str):
+                add(v, inp.get(f"strength_{m.group(1)}"))
+        # CR LoRA Stack: lora_name_1 + switch_1 + model_weight_1
+        for k, v in inp.items():
+            m = re.fullmatch(r"lora_name_(\d+)", k)
+            if m and str(inp.get(f"switch_{m.group(1)}", "On")).lower() != "off":
+                add(v, inp.get(f"model_weight_{m.group(1)}"))
+        # single loaders
+        if "lora_name" in inp or "name" in inp:
+            name = inp.get("lora_name", inp.get("name"))
+            strength = inp.get("strength_model", inp.get("strength", inp.get("lora_weight")))
+            add(name, strength)
     return out
 
 

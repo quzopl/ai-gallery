@@ -148,9 +148,19 @@ For each scanned image the parser tries in priority order:
    [companion plugin](https://github.com/quzopl/comfyui-save-image-rich-metadata).
    Authoritative, no heuristics needed.
 2. **ComfyUI `prompt` / `workflow` chunks** — the execution graph is parsed
-   to extract prompt (first `CLIPTextEncode`), negative (keyword heuristic),
-   model name (`CheckpointLoader*`), sampler params (`KSampler`), LoRAs
-   (`LoraLoader`).
+   by tracing the sampler's positive/negative links back to their text:
+   through `CLIPTextEncode` / `CLIPTextEncodeFlux`, string primitives,
+   `PreviewAny`, boolean switches (ComfySwitchNode, Crystools, rgthree Any
+   Switch), `Text Concatenate`, `CR Prompt Text`, `SDXLPromptStyler`,
+   `ImpactWildcardEncode`, Qwen image-edit encoders, LTXV/Wan conditioning
+   nodes, and the cached output of `ShowText` when the text came from an
+   LLM/VLM node. If no link can be traced, the best literal string in the
+   graph is used. Sampler params come from `KSampler*` or the
+   `RandomNoise` / `BasicScheduler` / `*Guider` / `KSamplerSelect` helpers
+   (links to primitive/seed nodes are followed); model from
+   `CheckpointLoader*` / `UNETLoader`; LoRAs from `LoraLoader*`, rgthree
+   Power Lora Loader / Lora Loader Stack, CR LoRA Stack and
+   `LoraLoaderStackedAdvanced` (only enabled entries).
 3. **A1111 `parameters` chunk** — the standard webUI format with positive
    prompt + `Negative prompt:` line + `Steps: ..., Sampler: ..., ...`. LoRAs
    are extracted from inline `<lora:name:strength>` tags.
@@ -210,7 +220,7 @@ Schema (SQLite with WAL):
 | `GET` | `/api/libraries` | List with image counts |
 | `POST` | `/api/libraries` | `{path, name?}` — starts scan + observer |
 | `DELETE` | `/api/libraries/{id}` | Removes from DB (files untouched) |
-| `POST` | `/api/libraries/{id}/rescan` | Force a full rescan |
+| `POST` | `/api/libraries/{id}/rescan` | Full rescan; `?force=true` re-parses metadata of unchanged files too (Shift+click ⟳ in the UI) |
 | `GET` | `/api/browse?path=...` | Server-side directory listing for the picker |
 | `GET` | `/api/images` | `?library_id=&model=&lora=&q=&favorite=&tag=&sort=&cursor=&limit=` |
 | `GET` | `/api/images/{id}` | Full metadata including LoRAs and tags |
