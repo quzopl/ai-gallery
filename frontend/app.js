@@ -167,13 +167,15 @@ document.getElementById("picker-add").onclick = async () => {
 
 document.getElementById("btn-add-library").onclick = () => openPicker();
 
-document.getElementById("btn-rescan").onclick = async () => {
+document.getElementById("btn-rescan").onclick = async (e) => {
   if (state.activeLibraryId == null) {
     toast("Select a library");
     return;
   }
-  await api(`/api/libraries/${state.activeLibraryId}/rescan`, { method: "POST" });
-  toast("Rescan started");
+  // Shift+click: full re-parse of every file (refresh metadata after parser updates)
+  const force = e.shiftKey;
+  await api(`/api/libraries/${state.activeLibraryId}/rescan${force ? "?force=true" : ""}`, { method: "POST" });
+  toast(force ? "Full re-parse started" : "Rescan started");
 };
 
 // ---------- gallery ----------

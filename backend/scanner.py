@@ -84,8 +84,12 @@ def scan_library(
     on_image_added: Callable[[int], None] | None = None,
     on_image_removed: Callable[[int], None] | None = None,
     cancel_event: threading.Event | None = None,
+    force: bool = False,
 ) -> dict[str, int]:
-    """Pełny skan biblioteki. Zwraca summary {added, updated, removed, total}."""
+    """Pełny skan biblioteki. Zwraca summary {added, updated, removed, total}.
+
+    force=True: re-parsuj każdy plik, nawet gdy mtime+size się nie zmieniły
+    (odświeżenie metadanych po zmianach w parserze)."""
     library_root = Path(library_root).resolve()
     files = _walk_images(library_root)
     total = len(files)
@@ -103,7 +107,8 @@ def scan_library(
         except OSError:
             continue
         prev = existing.get(rel)
-        if prev is not None and prev[0] == int(stat.st_mtime) and prev[1] == stat.st_size:
+        if (not force and prev is not None
+                and prev[0] == int(stat.st_mtime) and prev[1] == stat.st_size):
             pass
         else:
             try:

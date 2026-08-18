@@ -88,6 +88,25 @@ def test_rescan_skips_unchanged(tmp_path: Path, setup_db_writer) -> None:
     assert result["updated"] == 0
 
 
+def test_rescan_force_reparses_unchanged(tmp_path: Path, setup_db_writer) -> None:
+    """force=True re-parses every file even if mtime+size are unchanged — needed
+    after parser improvements to refresh already-indexed metadata."""
+    db_path, writer = setup_db_writer
+    lib_root = tmp_path / "lib"
+    _make_comfy_png(lib_root / "a.png", "a cat")
+    lib_id = db.add_library(writer, path=str(lib_root), name="lib")
+    scanner.scan_library(library_id=lib_id, library_root=lib_root,
+                         writer=writer, db_path=db_path)
+    # simulate stale index: blank the prompt as an old parser would have left it
+    db._submit(writer, lambda con: con.execute("UPDATE images SET prompt=NULL"))
+    result = scanner.scan_library(library_id=lib_id, library_root=lib_root,
+                                  writer=writer, db_path=db_path, force=True)
+    assert result["updated"] == 1
+    con = db.readonly(db_path)
+    assert con.execute("SELECT prompt FROM images").fetchone()["prompt"] == "a cat"
+    con.close()
+
+
 def test_watchdog_picks_up_new_file(tmp_path: Path, setup_db_writer) -> None:
     db_path, writer = setup_db_writer
     lib_root = tmp_path / "lib"
