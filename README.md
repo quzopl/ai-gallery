@@ -171,10 +171,14 @@ If nothing matches, the image is still indexed (filename, size, dimensions),
 just without the AI fields.
 
 For the most reliable extraction, **install the companion ComfyUI plugin**
-and replace `SaveImage` with `Save Image (AI Gallery)` in your workflows.
-The plugin traces the actual KSampler→CLIPTextEncode link instead of
-guessing, supports `Power Lora Loader (rgthree)` slot dicts, and writes
-A1111-compatible `parameters` as a bonus.
+and replace `SaveImage` with `Save Image (Rich Metadata)` in your workflows.
+The plugin traces the actual sampler→text link instead of guessing, supports
+`Power Lora Loader (rgthree)` slot dicts, and writes A1111-compatible
+`parameters` as a bonus. If your prompt is produced at run time (LLM prompt
+expander, wildcards) connect that STRING to the plugin's `prompt_text` input
+— the final text is not in the workflow graph and cannot be recovered
+otherwise. Any fields the plugin leaves empty are filled from the embedded
+ComfyUI graph.
 
 ## File operations
 
