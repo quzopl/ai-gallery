@@ -112,7 +112,7 @@ def add_library(req: AddLibraryRequest) -> dict:
     return {"id": lib_id, "name": name, "path": str(p)}
 
 
-def _start_initial_scan(library_id: int, root: Path) -> None:
+def _start_initial_scan(library_id: int, root: Path, *, force: bool = False) -> None:
     cancel = threading.Event()
     state.scan_cancel[library_id] = cancel
 
@@ -135,6 +135,7 @@ def _start_initial_scan(library_id: int, root: Path) -> None:
             on_image_added=on_added,
             on_image_removed=on_removed,
             cancel_event=cancel,
+            force=force,
         )
         _broadcast({"type": "scan_done", "library_id": library_id, **result})
 
@@ -317,13 +318,14 @@ def facets() -> dict:
 
 
 @app.post("/api/libraries/{library_id}/rescan")
-def rescan_library(library_id: int) -> dict:
+def rescan_library(library_id: int, force: bool = False) -> dict:
+    """force=true: re-parsuj metadane wszystkich plików (nie tylko zmienionych)."""
     con = db.readonly(DB_PATH)
     row = con.execute("SELECT path FROM libraries WHERE id=?", (library_id,)).fetchone()
     con.close()
     if not row:
         raise HTTPException(404)
-    _start_initial_scan(library_id, Path(row["path"]))
+    _start_initial_scan(library_id, Path(row["path"]), force=force)
     _sweep_thumbs()
     return {"status": "scan_started"}
 
