@@ -131,6 +131,7 @@ async function loadPickerPath(path) {
     document.getElementById("picker-up").disabled = !r.parent;
     document.getElementById("picker-up").dataset.parent = r.parent || "";
     document.getElementById("picker-add").disabled = isRoots;
+    document.getElementById("picker-mkdir").disabled = isRoots;
     pickerListEl.innerHTML = "";
     for (const d of r.dirs) {
       const li = document.createElement("li");
@@ -163,6 +164,21 @@ document.getElementById("picker-up").onclick = (e) => {
   if (parent) loadPickerPath(parent);
 };
 document.getElementById("picker-drives").onclick = () => loadPickerPath("__roots__");
+document.getElementById("picker-mkdir").onclick = async () => {
+  if (!pickerCurrentPath || pickerCurrentPath === "__roots__") return;
+  const name = prompt("New folder name:", "");
+  if (name == null || !name.trim()) return;
+  try {
+    const r = await api("/api/browse/mkdir", {
+      method: "POST",
+      body: JSON.stringify({ parent: pickerCurrentPath, name: name.trim() }),
+    });
+    toast(`Created ${r.path}`);
+    await loadPickerPath(r.path);
+  } catch (err) {
+    toast("Error: " + err.message);
+  }
+};
 document.getElementById("picker-close").onclick = closePicker;
 document.getElementById("picker-cancel").onclick = closePicker;
 document.getElementById("picker-add").onclick = async () => {

@@ -233,3 +233,21 @@ def test_export_image_rejects_bad_target(app_with_tmpdb) -> None:
     assert r.status_code == 400
     r = client.post("/api/images/999999/export", json={"to_dir": str(tmp_path)})
     assert r.status_code == 404
+
+
+def test_browse_mkdir_creates_folder(app_with_tmpdb) -> None:
+    client, tmp_path = app_with_tmpdb
+    r = client.post("/api/browse/mkdir", json={"parent": str(tmp_path), "name": "nowy"})
+    assert r.status_code == 200, r.text
+    assert Path(r.json()["path"]) == tmp_path / "nowy"
+    assert (tmp_path / "nowy").is_dir()
+    # already exists → 400
+    r = client.post("/api/browse/mkdir", json={"parent": str(tmp_path), "name": "nowy"})
+    assert r.status_code == 400
+    # invalid names
+    for bad in ("", " ", "..", "a/b", "a\\b"):
+        r = client.post("/api/browse/mkdir", json={"parent": str(tmp_path), "name": bad})
+        assert r.status_code == 400, bad
+    # parent must exist
+    r = client.post("/api/browse/mkdir", json={"parent": str(tmp_path / "nope"), "name": "x"})
+    assert r.status_code == 400

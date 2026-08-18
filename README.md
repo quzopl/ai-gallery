@@ -126,7 +126,8 @@ Buttons:
 - **🗑 Move to trash** — to XDG Trash (restorable from your file manager)
 - **✎ Rename** — in-place, validated
 - **📤 Export** — copy the file to a folder of your choice (server-side
-  folder picker, optional new subfolder). The original stays where it is;
+  folder picker; 📁+ creates a new folder anywhere in the tree). The
+  original stays where it is;
   on a name clash the copy gets a `.1`, `.2`… suffix. The last export
   folder is remembered.
 
@@ -235,6 +236,7 @@ Schema (SQLite with WAL):
 | `DELETE` | `/api/libraries/{id}` | Removes from DB (files untouched) |
 | `POST` | `/api/libraries/{id}/rescan` | Full rescan; `?force=true` re-parses metadata of unchanged files too (Shift+click ⟳ in the UI) |
 | `GET` | `/api/browse?path=...` | Server-side directory listing for the picker |
+| `POST` | `/api/browse/mkdir` | `{parent, name}` — create a new subfolder (📁+ in the picker) |
 | `GET` | `/api/images` | `?library_id=&model=&lora=&q=&favorite=&tag=&sort=&cursor=&limit=` |
 | `GET` | `/api/images/{id}` | Full metadata including LoRAs and tags |
 | `GET` | `/api/images/{id}/thumb` | WebP thumbnail (immutable cache) |
