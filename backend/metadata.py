@@ -45,7 +45,10 @@ def extract(path: Path) -> dict[str, Any]:
             text = getattr(img, "text", {}) or {}
             # Priorytet: nasz własny chunk z ComfyUI plugina (idealne dane).
             if "ai_gallery_meta" in text and _parse_ai_gallery_meta(text["ai_gallery_meta"], out):
-                pass
+                # The plugin may leave gaps (prompt behind an LLM node, seed
+                # linked to a seed node…) — fill them from the embedded graph.
+                if "prompt" in text or "workflow" in text:
+                    _fill_gaps_from_comfy(text, out)
             elif "prompt" in text or "workflow" in text:
                 _parse_comfyui(text, out)
             elif "parameters" in text:
@@ -100,6 +103,21 @@ def _parse_ai_gallery_meta(raw: str, out: dict[str, Any]) -> bool:
         out["width"] = data["width"]
         out["height"] = data["height"]
     return True
+
+
+_FILLABLE = ("prompt", "negative", "model_name", "sampler", "steps", "cfg", "seed")
+
+
+def _fill_gaps_from_comfy(text: dict[str, str], out: dict[str, Any]) -> None:
+    """Trace the ComfyUI graph and copy over only the fields the primary
+    source left empty. source_kind/raw_metadata stay those of the primary."""
+    tmp = dict(EMPTY)
+    _parse_comfyui(text, tmp)
+    for key in _FILLABLE:
+        if out.get(key) is None and tmp.get(key) is not None:
+            out[key] = tmp[key]
+    if not out.get("loras") and tmp.get("loras"):
+        out["loras"] = tmp["loras"]
 
 
 def _read_exif_user_comment(img: Image.Image) -> str | None:

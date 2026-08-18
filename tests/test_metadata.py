@@ -431,3 +431,45 @@ def test_comfy_cr_lora_stack_only_switched_on(tmp_path: Path) -> None:
             "switch_3": "On", "lora_name_3": "None", "model_weight_3": 1.0, "clip_weight_3": 1.0}},
     })
     assert m["loras"] == [("a.safetensors", 0.9)]
+
+
+def test_ai_gallery_meta_gaps_filled_from_comfy_graph(tmp_path: Path) -> None:
+    """The companion plugin can leave prompt/seed null (e.g. LLM-generated
+    prompt behind a switch). Missing fields must be filled by tracing the
+    ComfyUI graph that is embedded alongside; plugin values keep priority."""
+    meta = {"version": 1, "source": "comfyui-save-image-rich-metadata",
+            "prompt": None, "negative": None, "model_name": "krea2_turbo_bf16.safetensors",
+            "sampler": "euler", "steps": 12, "cfg": 1.0, "seed": None,
+            "loras": [{"name": "krea2/krea2_bart_fresh.safetensors", "strength": 1.0}]}
+    graph = {
+        "53": {"class_type": "KSampler", "inputs": {
+            "seed": ["76", 0], "steps": 12, "cfg": 1.0, "sampler_name": "euler",
+            "positive": ["79", 0], "negative": ["58", 0]}},
+        "58": {"class_type": "ConditioningZeroOut", "inputs": {"conditioning": ["79", 0]}},
+        "60": {"class_type": "TextGenerate", "inputs": {"prompt": ["61", 0], "max_length": 512}},
+        "61": {"class_type": "StringConcatenate",
+               "inputs": {"string_a": ["62", 0], "string_b": ["63", 0], "delimiter": ""}},
+        "62": {"class_type": "PrimitiveStringMultiline", "inputs": {"value": "You are an expert prompt engineer."}},
+        "63": {"class_type": "PrimitiveStringMultiline", "inputs": {"value": "portrait of a man in his late 30s"}},
+        "65": {"class_type": "ComfySwitchNode",
+               "inputs": {"switch": ["68", 0], "on_false": ["63", 0], "on_true": ["60", 0]}},
+        "68": {"class_type": "PrimitiveBoolean", "inputs": {"value": True}},
+        "76": {"class_type": "Seed (rgthree)", "inputs": {"seed": 876576531859567}},
+        "78": {"class_type": "PreviewAny", "inputs": {"source": ["65", 0]}},
+        "79": {"class_type": "CLIPTextEncode", "inputs": {"text": ["78", 0]}},
+        "83": {"class_type": "Power Lora Loader (rgthree)", "inputs": {
+            "lora_1": {"on": True, "lora": "krea2/krea2_bart_fresh.safetensors", "strength": 1},
+            "lora_2": {"on": True, "lora": "krea2/other.safetensors", "strength": 0.5}}},
+    }
+    p = tmp_path / "aigal.png"
+    _make_png(p, {"ai_gallery_meta": json.dumps(meta), "prompt": json.dumps(graph),
+                  "parameters": "<lora:x:1.0>\nSteps: 12, Sampler: euler"})
+    m = metadata.extract(p)
+    assert m["source_kind"] == "ai_gallery"           # plugin remains the primary source
+    assert m["prompt"] == "portrait of a man in his late 30s"
+    assert m["negative"] is None
+    assert m["seed"] == 876576531859567
+    assert m["steps"] == 12 and m["sampler"] == "euler"
+    # plugin's LoRA list is authoritative when present
+    assert m["loras"] == [("krea2/krea2_bart_fresh.safetensors", 1.0)]
+    assert json.loads(m["raw_metadata"])["source"] == "comfyui-save-image-rich-metadata"
